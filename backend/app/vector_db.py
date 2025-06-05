@@ -1,9 +1,21 @@
 from pinecone import Pinecone, ServerlessSpec
+from extract_content import get_text_from_pdf, pdf_path
+from dotenv import load_dotenv
+import os
 
-pc = Pinecone(api_key="PINECONE_API_KEY")
+# Load API key from .env file
+load_dotenv()
+api_key = os.getenv("PINECONE_API_KEY")
+
+pc = Pinecone(api_key=api_key)
 index_name = "developer-quickstart-py"
-query = "Famous historical structures and monuments"
+query = " What is EAX What is the difference between the following x86 registers: AX, EAX, RAX? (select the best answer) A) Their bit length B) Whether they are byte addressable C) They are different registers"
+
+
 def initialize_vector_db(index_name):
+    # Delete existing index if it exists
+    # Create a dense index with integrated embedding
+
     if not pc.has_index(index_name):
         pc.create_index_for_model(
             name=index_name,
@@ -14,19 +26,64 @@ def initialize_vector_db(index_name):
                 "field_map":{"text": "chunk_text"}
             }
         )
-def semantic_search(query):
     
 
+def split_into_chunks(text, max_words=100, overlap=30):
+    words = text.split()
+    chunks = []
+    for i in range(0, len(words), max_words - overlap):
+        chunk = " ".join(words[i:i + max_words])
+        chunks.append(chunk)
+    return chunks
+   
+
+def semantic_search(query):
+    context_list =[]
+    index = pc.Index(index_name)
+    print("Query is, ", query)
     results = index.search(
         namespace="ns1",
         query={
             "top_k": 5,
             "inputs": {
-                'text': query
+                "text": query
             }
         }
     )
 
-    print(results)
+    if not results['result']['hits']:
+        print("no results")
+    else:
+        for hit in results['result']['hits']:
+            
+            #print(f"Chunk {hit['_id'][-1]} (score: {hit['_score']}):  Content of chunk {hit['_id'][-1]} : {hit['fields']['chunk_text']}")
+            context_list.append(f"Chunk {hit['_id'][-1]} (score: {hit['_score']}):  Content of chunk {hit['_id'][-1]} : {hit['fields']['chunk_text']}")
+    result = '\n\n'.join(context_list)
+    #print(result)
+    return result
 
-initialize_vector_db(index_name)
+def main():
+    doc_text = get_text_from_pdf(pdf_path)
+
+    chunks = split_into_chunks(doc_text)
+    
+    print(f"Split text into {len(chunks)} chunks.")
+    records = []
+    for i, chunk in enumerate(chunks):
+        records.append({
+            "_id": f"resume-chunk-{i}",
+            "chunk_text": chunk,
+            "category": "resume"
+        })
+    initialize_vector_db(index_name)
+
+    # Get index handle
+    index = pc.Index(index_name)
+    print("Upserting records...")
+    index.upsert_records("ns1", records)
+    print(f"Upserted {len(records)} chunks into namespace 'ns1'.")
+
+    # Perform semantic search
+    semantic_search(query)
+
+    

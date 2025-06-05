@@ -17,7 +17,8 @@ def get_text_from_pdf(path):
     return text_content
 
 doc_path = r"C:\Users\jorda\OneDrive\Documents\testing content ta-ai.docx"
-pdf_path = r"C:\Users\jorda\Downloads\math 257 - quiz 1 - systems and gaussian (5).pdf"
+pdf_path = r"C:\Users\jorda\Downloads\cmsc313-assembly-nasm-intro.pdf"
+#pdf_path =r"C:\Users\jorda\Downloads\Carbs (1).pdf"
 #get_doc_content(doc_path)
 get_text_from_pdf(pdf_path)
 print("testing")

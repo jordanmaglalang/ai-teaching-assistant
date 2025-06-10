@@ -3,16 +3,29 @@ import os
 # Load environment variables
 _ = load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
-from extract_content import get_doc_content, get_text_from_pdf, doc_path, pdf_path
+from extract_content import get_text_from_pdf, doc_path, pdf_path
 from vector_db import main, initialize_vector_db, split_into_chunks, semantic_search, pc, index_name, query
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import StateGraph, START, state
 from langchain_core.messages import SystemMessage, HumanMessage
 from langchain_openai import ChatOpenAI
 from typing import Annotated, TypedDict
+from langchain.agents import initialize_agent, AgentType
+from tools import retrieve_relevant_chunks
+import re
 
 
 model = ChatOpenAI()
+tools = [retrieve_relevant_chunks]
+
+agent = initialize_agent(
+    tools=tools,
+    llm=model,
+    agent=AgentType.OPENAI_FUNCTIONS,
+    verbose=True
+)
+
+
 
 doc_text = get_text_from_pdf(pdf_path)
 chunks = split_into_chunks(doc_text)
@@ -33,161 +46,411 @@ print(f"Upserted {len(records)} chunks into namespace 'ns1'.")
 
 
 class AgentState(TypedDict):
+    first_question: bool
     primary_task: str
     current_task: str
-    relevancy: bool
-    new_primary: bool
-
-def classify_task_type(state:AgentState):
-
-
+    primary_answer: str
+    attempts: int
+    follow_up_question:str
+    follow_up_task: str
 
 
-    classification_prompt = f"""
-    You are an assistant that determines whether a student is continuing their current topic or switching to a new one.
 
-    Here’s how to classify:
 
-    - If the student's new question is closely related to the original question (e.g., it's a clarification, expansion, or detail about the same topic), respond with **"False"** — it's a follow-up.
-    - If the new question changes to a clearly unrelated topic, respond with **"True"** — it's a new topic.
-
-    Examples:
-    - Original: "What is a for loop?"  
-    New: "How does iteration work?" → False
-    - Original: "What is a for loop?"  
-    New: "What is a binary tree?" → True
-    - Original: "What is recursion?"  
-    New: "Is it used in sorting?" → False
-    - Original: "What is an EAX register?"  
-    New: "Is it in the CPU?" → False
-
-    Now classify this:
-
-    Original question (primary task):  
-    "{state['primary_task']}"
-
-    New question (current task):  
-    "{state['current_task']}"
-
-    Respond with only "True" or "False".
-    """
-
-    print("CLASSIFICATION PROMPT")
-    print(classification_prompt)
-    response = model.invoke([SystemMessage(classification_prompt)])
-    state['new_primary'] = bool(response.content)
-    print(state['new_primary'])
-    if state['new_primary'] == True:
-        state['primary_task'] = state['current_task']
-       
+def user_input(state:AgentState):
     return state
-
-
-def chat(state: AgentState):
-    # Perform semantic search with the current question
-    current_query = state["current_task"]
-    top_results = semantic_search(current_query)
-
-    # Format chunk_context_and_scores string for the prompt (assuming top_results is a list of dicts)
+def user_input2(state:AgentState):
+    return state
+def user_input3(state:AgentState):
+    return state
+def classify_task_type(state: AgentState):
+    current_task = state["current_task"]
+    
     
 
-    TA_PROMPT = f"""You are an AI Teaching Assistant guiding a student to learn through questioning (Socratic method).
+    classification_prompt = f"""
+    You are an AI assistant classifying student input.
 
-Your job is to help the student reach the answer to their *primary question*, by evaluating and responding to their *current input* (which might be a guess, a reasoning attempt, or a follow-up question).
+    Classify the student's message as one of:
 
-You have access to a set of context snippets ("chunks") related to the student's primary question, each with a relevance score.
+    - question: If the message is asking for information, clarification, or help — including multiple-choice questions (with options like "a)", "b)", etc.) or uncertain responses like "I don't know", "No idea", or "Not sure".
+    - attempted_answer: If the message is trying to provide an explanation, opinion, guess, or partial answer — even if phrased as a question (e.g., "Could it be...", "Is it...").
+    
+    **Student Message:**  
+    "{current_task}"
 
-Use these rules to handle chunk context:
-- For chunks with score ≥ 0.5: rely confidently on their content to guide your questions and explanations.
-- For chunks with scores between 0.1 and 0.5: use their content cautiously, combining it with your own reasoning.
-- For chunks with score < 0.1: ignore the chunk content entirely.
+    Examples:
 
-You are also provided with two fields:
-- `primary_task`: the student's original question or problem.
-- `current_task`: the student's most recent message.
+    1. "What is a function?" → question  
+    2. "I don't know." → question  
+    3. "No idea" → question  
+    4. "Could it be photosynthesis?" → attempted_answer  
+    5. "Isn't an ion a charged atom?" → attempted_answer  
+    6. "A variable stores data." → attempted_answer  
+    7. "I think it's related to energy." → attempted_answer  
+    8. "How does the loop stop?" → question  
+    9. "What is the major difference between A and B? a) one is hydrophobic b) one is polar" → question  
+    10. "What is the best option? a) dog b) cat c) fish" → question
 
-Now, behave according to this decision logic:
+    Respond with only one of:
+    - question
+    - attempted_answer
+    """.strip()
+
+
+
+
+
+    
+
+    response = agent.invoke([SystemMessage(classification_prompt)])
+    response_text = str(response.content).strip().lower().strip(".")
+
+    print("##CLASSIFY TASK TYPE##", response_text)
+    print("STATE OF THE PRIMARY QUESTION IS ", state['primary_task'])
+    
+    is_question = response_text == "question"
+
+   
+    return is_question 
+
+
+def question_type(state:AgentState):
+    primary_task = state['primary_task']   
+    current_task = state['current_task']
+    response_id = f"""
+You are an AI Teaching Assistant.
+
+Determine whether the student's message is:
+
+- follow up question: A clarifying or related question that continues the discussion of the current main question.
+- new main question: A new, unrelated question that introduces a different topic, even if it is within the same subject. Even if both questions are from the same subject area (e.g., biology, chemistry, programming), a question should only be considered a **follow-up** if it builds on the *same concept or explanation*.  
+If the student's message asks about a **different concept**, **definition**, **classification**, or **dimension** — even if related — it should be classified as a **new main question**.
+
+
+**Current Main Question:**  
+"{primary_task}"
+
+**Student's Message:**  
+"{current_task}"
+
+Classify the message with just one of:
+
+- follow up question
+- new main question
+
+
+Examples:
+
+1. Primary: "What is recursion?"  
+   Student: "Is that like a function calling itself?" → follow up question
+
+2. Primary: "What is recursion?"  
+   Student: "How do while loops work?" → new main question
+
+3. Primary: "What are arrays?"  
+   Student: "What about linked lists?" → new main question 
+
+4. Primary: "How does a for loop work?"  
+   Student: "What happens if I put a break inside it?" → follow up question
+
+5. Primary: "What is a ketose?"  
+   Student: "What is a pentose?" → new main question  
+   *(The student switches from functional group type to carbon number — a different classification dimension.)*
+
+""".strip()
+    print("QUESTION TYPE PROMPT , ", response_id )
+    response = agent.invoke([SystemMessage(response_id)])
+    response_text = str(response.content).strip().lower().strip(".")
+    print("##RESULT OF QUESTION TYPE IS## ", response_text)
+    answer = response_text == "new main question"
+    print("ANSWER IS ", answer, " ATTEMPTS IS, ", state['attempts']==0)
+    
+    return answer or state['attempts']==0
+def generate_answer(state: AgentState):
+    state['primary_task'] = state['current_task']
+    print("CURRENT TASK (genANs) IS ", state["current_task"])
+
+    question = state["primary_task"]
+    print("QUESTION IS ,", question)
+   
+    answer_prompt = f"""
+You are a highly knowledgeable teaching assistant.
+
+The student has asked a question. It may or may not include multiple-choice options.
+
+Your task is to:
+
+1. Determine whether the question includes multiple-choice options.
+2. If it does:
+   - Identify the correct option (e.g., A, B, C, D).
+   - State the correct choice (e.g., "The correct answer is A").
+   - Provide a brief explanation of why that option is correct.
+   - Optionally, explain why the other options are incorrect.
+3. If it does **not** include multiple-choice options:
+   - Provide a direct, accurate answer in your own words.
+   - Keep your explanation clear and concise.
 
 ---
 
-1. **If the current_task is simply another question or an attempt to make progress toward solving the primary_task:**
-    - Ask a helpful **follow-up question** related to the primary_task, based on their current_task.
-    - Help them think more deeply or correct their line of reasoning.
-    - Encourage reflection and lead them forward without giving the final answer.
+Student Question:
+"{question}"
 
-2. **If the current_task is an attempted answer or explanation for the primary_task:**
-    - First, determine if the student’s answer is **correct**.
-        - ✅ If **correct**: 
-            - Congratulate the student warmly.
-            - Provide a clear explanation of **why** their answer is right, referencing the chunks if helpful.
-        - ❌ If **incorrect**:
-            - Gently correct their misunderstanding without giving the full answer.
-            - Ask a guiding question that nudges them in the right direction.
-            - Reference helpful chunk content if appropriate.
+Begin your response accordingly.
+""".strip()
 
-3. **If it's unclear whether the input is a follow-up or an answer:**
-    - Assume it’s an exploratory step and treat it like a follow-up.
-    - Use probing questions to encourage deeper thinking or clarification.
 
----
 
-Always avoid direct answers before the student has interacted with the system for at least 5 questions (unless their answer is correct). Encourage learning, not just answering.
+    response = agent.invoke([SystemMessage(answer_prompt)])
+    answer = response.content.strip()
+    state["primary_answer"] = answer
+    print("GENERATE ANSWER PROMPT , ", answer_prompt)
+    print("📌 Stored correct answer:", answer)
+    print("GENERATE AND AFTER THAT, THE ASTATE OF PRIMARY TASK IS ", state['primary_task'])
+  
+    
+   
+    return state
+def rag_support(state:AgentState):
+    
+    return state
+def first_hint(state:AgentState):
+    answer = state["primary_answer"]
+    question = state['primary_task']
+    print("FIRST HINT TO ANSWER ", answer)
+    print("FIRST HINT TO QUESTION ", question)
+    followup_prompt = f"""
+You are a helpful and knowledgeable teaching assistant.
 
-Be patient, respectful, and positive.
+The student asked the following main question:
+"{question}"
 
----
+You already provided the following answer:
+"{answer}"
 
-Here is the student's primary question:
 
-{state['primary_task']}
 
-Here is their most recent message:
+Your task is to respond helpfully and clearly, using the previously provided answer as context. You may:
+- Reference or hint at the original explanation without repeating it verbatim.
+- Elaborate, clarify, or guide the student based on their new question.
+- Assume the student is trying to better understand the original answer or verify it.
 
-{state['current_task']}
-
-Here is the relevant chunk context and their scores:
-
-{top_results}
-
-Your response:
-
-"""
-
-    messages = [
-        SystemMessage(TA_PROMPT)
-    ]
-    response = model.invoke(messages)
-    print("##TA RESPONSE##", response.content)
+Keep your response clear, focused, and supportive.
+""".strip()
+    response = agent.invoke([SystemMessage(followup_prompt)])
+    print("##HINT RESPONSE ", response.content)
     return state
 
-graph_builder = StateGraph(AgentState)
-graph_builder.add_node("start", classify_task_type)
-graph_builder.add_node("chatbot", chat)
-graph_builder.add_edge("start", "chatbot")
-graph_builder.set_entry_point("start")
+def follow_up(state:AgentState):
+    primary_task = state['primary_task']
+    current_task = state['current_task']
+    primary_answer = state['primary_answer']
+    guide= f"""
+You are an AI Teaching Assistant using the Socratic method.
 
+The main question is:  
+"{primary_task}"
+
+The student has asked a follow-up question:  
+"{current_task}"
+
+Generate a meaningful, guiding question that helps the student think deeper and move closer to the answer.
+
+Do NOT give the answer.
+"""
+    response = agent.invoke([SystemMessage(guide)])
+    print("###FEEDBACK RESPONSE###", response.content)
+    state["follow_up_question"] = get_last_question(response.content)
+    print("GET LAST QUESTION TO THE FOLLOW UP QUESTION'S RESPONSE,", state["follow_up_question"])
+    return state
+
+def answer_type(state:AgentState):
+    if not state['follow_up_question']:
+        return False
+    
+
+    return True
+def grade_follow_up(state:AgentState):
+    state["follow_up_task"] = state["current_task"]
+    student_response = state["follow_up_task"]
+    follow_up_question = state["follow_up_question"]
+    state["follow_up_question"] = None
+    print("##MY FOLLOW UP TASK## ", student_response)
+    follow_up_eval_prompt = f"""
+You are an AI Teaching Assistant helping to guide students through concept mastery.
+
+A follow-up question was generated to help a student correct their earlier misunderstanding. The student has now responded to that follow-up.
+
+Your task is to evaluate the student's response **only** in the context of the follow-up question.
+
+---
+
+📌 Follow-Up Question:
+{follow_up_question}
+
+✏️ Student's Response:
+{student_response}
+
+---
+
+Answer with:
+- "Correct" if the student’s response directly and accurately answers the follow-up question.
+- "Partially correct" if the response shows partial understanding or only addresses part of the question.
+- "Incorrect" if the student misunderstood or did not address the question meaningfully.
+
+Then, **briefly justify your choice** in 1–2 sentences.
+
+Example Format:
+Correct – The student accurately identifies glucose as a common biomolecule used for energy.
+""".strip()
+    print("##PROMPT IS##", follow_up_eval_prompt)
+    response = agent.invoke([SystemMessage(follow_up_eval_prompt)])
+    print("##FOLLOW UP EVAL##", response.content)
+
+
+    return state
+
+def grade_answer(state:AgentState):
+    primary_task = state['primary_task']
+    current_task = state['current_task']
+    primary_answer = state['primary_answer']
+    print("GRADE ANSWER FOR QUESTION ", state['primary_answer'])
+    grade= f"""
+You are an AI Teaching Assistant.
+
+Primary question:  
+"{primary_task}"
+
+Student's attempted answer:  
+"{current_task}"
+
+Correct answer (for comparison):  
+"{primary_answer}"
+
+Determine if the student's answer is semantically correct (has the same core meaning as the correct answer).
+
+If correct:  
+- Congratulate the student sincerely.  
+- Explain why their answer is correct.
+
+If incorrect (or not fully correct):  
+- State the answer is incorrect if completely inaccurate.  
+- Briefly explain why, referencing key concepts.  
+- Then, ask a guiding question to help them get closer.
+
+Do NOT reveal the correct answer unless the student is correct or has tried 5 or more times.
+
+Reply with your response only.
+"""
+    response = agent.invoke([SystemMessage(grade)])
+    print("###GRADE RESPONSE###", response.content)
+    state["follow_up_question"] = get_last_question(response.content)
+    print("##FOLLOW UP TASK##", state["follow_up_question"])
+    return state
+
+
+def get_last_question(text):
+    print("###received get last question###")
+    # Split the text into sentences using punctuation
+    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
+
+    # Get the last sentence
+    if not sentences:
+        return None
+
+    last_sentence = sentences[-1]
+
+    # Check if the last sentence ends with a question mark
+    if last_sentence.endswith('?'):
+        print("###THE QUESTION TO STORE IS###", last_sentence.strip())
+        return last_sentence.strip()
+    
+    return None
+
+
+
+graph_builder = StateGraph(AgentState)
+graph_builder.add_node("user_input", user_input)
+graph_builder.add_node("generate_answer", generate_answer)
+graph_builder.add_node("user_input2", user_input2)
+graph_builder.add_node("grade_answer", grade_answer)
+graph_builder.add_node("follow_up", follow_up)
+graph_builder.add_node("hint", first_hint)
+graph_builder.add_node("user_input3", user_input3)
+graph_builder.add_node("grade_follow_up", grade_follow_up)
+graph_builder.add_edge("generate_answer", "hint")
+
+graph_builder.add_conditional_edges(
+        "user_input",
+        classify_task_type,
+        {True: "user_input2", False: "user_input3"}
+    )
+graph_builder.add_conditional_edges(
+        "user_input2",
+        question_type,
+        {True: "generate_answer", False: "follow_up"}
+    )
+graph_builder.add_conditional_edges(
+        "user_input3",
+        answer_type,
+        {True: "grade_follow_up", False: "grade_answer"}
+    )
+
+
+
+
+
+graph_builder.set_entry_point("user_input")
 checkpointer = InMemorySaver()
 graph = graph_builder.compile(checkpointer=checkpointer)
 config = {
-    "configurable": {
-        "thread_id": "user-session-1"
+        "configurable": {
+            "thread_id": "user-session-1"
+        }
     }
-}
 
 current_primary_task = None
+current_primary_answer = None
+current_follow_up_question = None
+attempts = 0
 while True:
+    
+   
     user_input = input("Ask your question (or type 'exit' to quit): ")
     if user_input.strip().lower() == "exit":
         print("Goodbye!")
         break
-
+    
     if current_primary_task is None:
         current_primary_task = user_input
-
+    if current_primary_answer is None:
+        current_primary_answer = ""
     initial_input = {
+        "attempts": attempts,
         "current_task": user_input,
-        "primary_task": current_primary_task
+        "primary_task": current_primary_task,
+        "primary_answer": current_primary_answer,
+        "follow_up_question": current_follow_up_question
+        
     }
-    for s in graph.stream(initial_input):
+   
+    for s in graph.stream(initial_input,config):
         # This yields intermediate states/events, print only final if you want
-        print("Stream event:", s)
+        final_state = s 
+    
+    print("Final state keys:", final_state.keys())
+    print("Full final state:", final_state)
+    if "hint" in final_state:
+        current_primary_task = final_state["hint"]["primary_task"]
+        current_primary_answer = final_state["hint"]["primary_answer"]
+        print("###PRIMARY TASK IS ####", current_primary_task)
+    if "grade_answer" in final_state:
+        
+        current_primary_task = final_state["grade_answer"]["primary_task"]
+        current_primary_answer = final_state["grade_answer"]["primary_answer"]
+        current_follow_up_question = final_state["grade_answer"]["follow_up_question"]
+        print("##GRADE ANSWER## ", current_primary_task)
+    if "grade_follow_up" in final_state:
+        current_follow_up_question = final_state["grade_follow_up"]["follow_up_question"]
+        print("##CURRENT FOLLOW UP QUESTION IS##", current_follow_up_question)
+    attempts +=1

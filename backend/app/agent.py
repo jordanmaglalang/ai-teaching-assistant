@@ -18,7 +18,7 @@ import re
 model = ChatOpenAI()
 tools = [retrieve_relevant_chunks]
 
-agent = initialize_agent(
+model_with_tools = initialize_agent(
     tools=tools,
     llm=model,
     agent=AgentType.OPENAI_FUNCTIONS,
@@ -63,6 +63,8 @@ def user_input2(state:AgentState):
     return state
 def user_input3(state:AgentState):
     return state
+def user_input4(state:AgentState):
+    return state
 def classify_task_type(state: AgentState):
     current_task = state["current_task"]
     
@@ -103,7 +105,7 @@ def classify_task_type(state: AgentState):
 
     
 
-    response = agent.invoke([SystemMessage(classification_prompt)])
+    response = model.invoke([SystemMessage(classification_prompt)])
     response_text = str(response.content).strip().lower().strip(".")
 
     print("##CLASSIFY TASK TYPE##", response_text)
@@ -160,7 +162,7 @@ Examples:
 
 """.strip()
     print("QUESTION TYPE PROMPT , ", response_id )
-    response = agent.invoke([SystemMessage(response_id)])
+    response = model.invoke([SystemMessage(response_id)])
     response_text = str(response.content).strip().lower().strip(".")
     print("##RESULT OF QUESTION TYPE IS## ", response_text)
     answer = response_text == "new main question"
@@ -201,7 +203,7 @@ Begin your response accordingly.
 
 
 
-    response = agent.invoke([SystemMessage(answer_prompt)])
+    response = model.invoke([SystemMessage(answer_prompt)])
     answer = response.content.strip()
     state["primary_answer"] = answer
     print("GENERATE ANSWER PROMPT , ", answer_prompt)
@@ -211,9 +213,7 @@ Begin your response accordingly.
     
    
     return state
-def rag_support(state:AgentState):
-    
-    return state
+
 def first_hint(state:AgentState):
     answer = state["primary_answer"]
     question = state['primary_task']
@@ -228,17 +228,85 @@ The student asked the following main question:
 You already provided the following answer:
 "{answer}"
 
+If the question is a multiple-choice question:
+- Do NOT state or confirm the correct answer.
+- Do NOT say whether the student is correct or incorrect.
+- Instead, guide the student toward the correct choice by:
+  - Highlighting relevant clues.
+  - Quoting a relevant sentence or phrase from course materials if helpful.
+  - Asking reflective or guiding questions.
+  - Clarifying terms or concepts without solving the question for them.
 
+If the question is **not** multiple-choice:
+- Provide a clear, accurate answer in your own words.
+- Quote course material if it helps reinforce or validate your explanation.
 
-Your task is to respond helpfully and clearly, using the previously provided answer as context. You may:
-- Reference or hint at the original explanation without repeating it verbatim.
-- Elaborate, clarify, or guide the student based on their new question.
-- Assume the student is trying to better understand the original answer or verify it.
+You have access to a tool that retrieves relevant chunks from the course materials. Use it when quoting a short, specific part of a chunk can help support your hint or explanation.
 
-Keep your response clear, focused, and supportive.
+Always focus on guiding the student toward understanding — not simply giving away the answer.
 """.strip()
-    response = agent.invoke([SystemMessage(followup_prompt)])
-    print("##HINT RESPONSE ", response.content)
+
+
+    response = model_with_tools.invoke([SystemMessage(followup_prompt)])
+    print("##HINT RESPONSE ##",response["output"])
+    state['follow_up_question']= get_last_question(response["output"])
+    return state
+def follow_up_type(state:AgentState):
+    
+    if not state['follow_up_question']:
+        print("FOLLOW_UP_TYPE IS ", state["follow_up_question"])
+        return False
+    
+    print("FOLLOW_UP_TYPE IS## ", state["follow_up_question"])
+    return True
+def grade_follow_up2(state:AgentState):
+    primary_task = state["primary_task"]
+    follow_up_question = state["follow_up_question"]
+    state['follow_up_task'] = state["current_task"]
+    student_response = state["follow_up_task"]
+    state["follow_up_question"] = None
+    follow_up_eval_prompt = f"""
+    You are an AI Teaching Assistant guiding a student through a concept.
+
+    A follow-up question was created to help the student rethink or clarify their misunderstanding of the original main question.
+
+    Here’s the context:
+
+    🧠 Main Question:
+    {primary_task}
+
+    📌 Follow-Up Question:
+    {follow_up_question}
+
+    ✏️ Your Response:
+    {student_response}
+
+    ---
+
+    Now respond directly to the student.
+
+    - If their follow-up answer is **correct**:
+    - Confirm their answer.
+    - Briefly explain why it’s right.
+    - Help them connect this back to the **main question** to reinforce learning.
+
+    - If their answer is **partially correct**:
+    - Acknowledge what's right.
+    - Clarify what’s missing.
+    - Offer a hint or guidance.
+
+    - If their answer is **incorrect**:
+    - Gently explain that it's not quite right.
+    - Offer a helpful hint or ask a guiding question.
+
+    Keep it supportive and clear, as if you're speaking directly to the student.
+    """.strip()
+
+
+    print("##PROMPT IS FOR RESPONSE TO FOLLOW UP QUESTION##", follow_up_eval_prompt)
+    response = model.invoke([SystemMessage(follow_up_eval_prompt)])
+    print("##FOLLOW UP EVAL##", response.content)
+    state["follow_up_question"] = get_last_question(response.content)
     return state
 
 def follow_up(state:AgentState):
@@ -258,7 +326,7 @@ Generate a meaningful, guiding question that helps the student think deeper and 
 
 Do NOT give the answer.
 """
-    response = agent.invoke([SystemMessage(guide)])
+    response = model.invoke([SystemMessage(guide)])
     print("###FEEDBACK RESPONSE###", response.content)
     state["follow_up_question"] = get_last_question(response.content)
     print("GET LAST QUESTION TO THE FOLLOW UP QUESTION'S RESPONSE,", state["follow_up_question"])
@@ -266,46 +334,60 @@ Do NOT give the answer.
 
 def answer_type(state:AgentState):
     if not state['follow_up_question']:
+        print("FALSE FOR ANSWER TYPE")
         return False
     
-
+    print("TRUE FOR ANSWER TYPE")
     return True
 def grade_follow_up(state:AgentState):
     state["follow_up_task"] = state["current_task"]
     student_response = state["follow_up_task"]
     follow_up_question = state["follow_up_question"]
+    primary_task = state["primary_task"]
     state["follow_up_question"] = None
     print("##MY FOLLOW UP TASK## ", student_response)
     follow_up_eval_prompt = f"""
-You are an AI Teaching Assistant helping to guide students through concept mastery.
+    You are an AI Teaching Assistant guiding a student through a concept.
 
-A follow-up question was generated to help a student correct their earlier misunderstanding. The student has now responded to that follow-up.
+    A follow-up question was created to help the student rethink or clarify their misunderstanding of the original main question.
 
-Your task is to evaluate the student's response **only** in the context of the follow-up question.
+    Here’s the context:
 
----
+    🧠 Main Question:
+    {primary_task}
 
-📌 Follow-Up Question:
-{follow_up_question}
+    📌 Follow-Up Question:
+    {follow_up_question}
 
-✏️ Student's Response:
-{student_response}
+    ✏️ Your Response:
+    {student_response}
 
----
+    ---
 
-Answer with:
-- "Correct" if the student’s response directly and accurately answers the follow-up question.
-- "Partially correct" if the response shows partial understanding or only addresses part of the question.
-- "Incorrect" if the student misunderstood or did not address the question meaningfully.
+    Now respond directly to the student.
 
-Then, **briefly justify your choice** in 1–2 sentences.
+    - If their follow-up answer is **correct**:
+    - Confirm their answer.
+    - Briefly explain why it’s right.
+    - Help them connect this back to the **main question** to reinforce learning.
 
-Example Format:
-Correct – The student accurately identifies glucose as a common biomolecule used for energy.
-""".strip()
+    - If their answer is **partially correct**:
+    - Acknowledge what's right.
+    - Clarify what’s missing.
+    - Offer a hint or guidance.
+
+    - If their answer is **incorrect**:
+    - Gently explain that it's not quite right.
+    - Offer a helpful hint or ask a guiding question.
+
+    Keep it supportive and clear, as if you're speaking directly to the student.
+    """.strip()
+
+
     print("##PROMPT IS##", follow_up_eval_prompt)
-    response = agent.invoke([SystemMessage(follow_up_eval_prompt)])
+    response = model.invoke([SystemMessage(follow_up_eval_prompt)])
     print("##FOLLOW UP EVAL##", response.content)
+    state['follow_up_question']= get_last_question(response.content)
 
 
     return state
@@ -315,34 +397,41 @@ def grade_answer(state:AgentState):
     current_task = state['current_task']
     primary_answer = state['primary_answer']
     print("GRADE ANSWER FOR QUESTION ", state['primary_answer'])
-    grade= f"""
-You are an AI Teaching Assistant.
+    grading_prompt = f"""
+    You are an AI Teaching Assistant.
 
-Primary question:  
-"{primary_task}"
+    Primary question:  
+    "{primary_task}"
 
-Student's attempted answer:  
-"{current_task}"
+    Student's attempted answer:  
+    "{current_task}"
 
-Correct answer (for comparison):  
-"{primary_answer}"
+    Correct answer (for internal comparison only — do NOT reveal to the student):  
+    "{primary_answer}"
 
-Determine if the student's answer is semantically correct (has the same core meaning as the correct answer).
+    Your task is to evaluate whether the student's answer is semantically correct (has the same core meaning as the correct answer).
 
-If correct:  
-- Congratulate the student sincerely.  
-- Explain why their answer is correct.
+    Instructions:
 
-If incorrect (or not fully correct):  
-- State the answer is incorrect if completely inaccurate.  
-- Briefly explain why, referencing key concepts.  
-- Then, ask a guiding question to help them get closer.
+    - If the student's answer is correct:
+    - Congratulate the student.
+    - Briefly explain why their answer is correct using supporting reasoning or concepts.
 
-Do NOT reveal the correct answer unless the student is correct or has tried 5 or more times.
+    - If the student's answer is incorrect:
+    - DO NOT say or hint at the correct answer.
+    - DO NOT state or explain what the correct answer is.
+    - DO NOT say things like "The correct answer is..." or "The correct linkage is..." or any sentence that reveals or paraphrases the correct answer in any way.
+    - DO NOT reference, rephrase, or define the correct answer or its key terms.
+    - Only explain why the student's answer is **incorrect** based on conceptual misunderstanding or confusion.
+    - End by asking a helpful guiding question to encourage the student to think further.
 
-Reply with your response only.
-"""
-    response = agent.invoke([SystemMessage(grade)])
+    ⚠️ ABSOLUTELY DO NOT reveal or describe the correct answer — this includes its letter, terminology, or paraphrased explanation — unless the student's answer is correct.
+
+    Respond only with your feedback to the student.
+    """.strip()
+
+
+    response = model.invoke([SystemMessage(grading_prompt)])
     print("###GRADE RESPONSE###", response.content)
     state["follow_up_question"] = get_last_question(response.content)
     print("##FOLLOW UP TASK##", state["follow_up_question"])
@@ -378,6 +467,8 @@ graph_builder.add_node("follow_up", follow_up)
 graph_builder.add_node("hint", first_hint)
 graph_builder.add_node("user_input3", user_input3)
 graph_builder.add_node("grade_follow_up", grade_follow_up)
+graph_builder.add_node("user_input4", user_input4)
+graph_builder.add_node("grade_follow_up2", grade_follow_up2)
 graph_builder.add_edge("generate_answer", "hint")
 
 graph_builder.add_conditional_edges(
@@ -388,13 +479,19 @@ graph_builder.add_conditional_edges(
 graph_builder.add_conditional_edges(
         "user_input2",
         question_type,
-        {True: "generate_answer", False: "follow_up"}
+        {True: "generate_answer", False: "user_input4"}
     )
 graph_builder.add_conditional_edges(
         "user_input3",
         answer_type,
         {True: "grade_follow_up", False: "grade_answer"}
     )
+graph_builder.add_conditional_edges(
+    "user_input4",
+    follow_up_type,
+    {True: "grade_follow_up2", False: "follow_up"}
+
+)
 
 
 
@@ -453,4 +550,6 @@ while True:
     if "grade_follow_up" in final_state:
         current_follow_up_question = final_state["grade_follow_up"]["follow_up_question"]
         print("##CURRENT FOLLOW UP QUESTION IS##", current_follow_up_question)
+    if "follow_up" in final_state:
+        current_follow_up_question = final_state["follow_up"]["follow_up_question"]
     attempts +=1

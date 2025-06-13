@@ -4,7 +4,7 @@ import os
 _ = load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
 from extract_content import get_text_from_pdf, doc_path, pdf_path
-from vector_db import main, initialize_vector_db, split_into_chunks, semantic_search, pc, index_name, query
+from vector_db import initialize_vector_db, split_into_chunks, semantic_search, pc, index_name, query
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import StateGraph, START, state
 from langchain_core.messages import SystemMessage, HumanMessage
@@ -53,6 +53,7 @@ class AgentState(TypedDict):
     attempts: int
     follow_up_question:str
     follow_up_task: str
+    
 
 
 
@@ -249,6 +250,7 @@ Always focus on guiding the student toward understanding — not simply giving a
 
     response = model_with_tools.invoke([SystemMessage(followup_prompt)])
     print("##HINT RESPONSE ##",response["output"])
+    rag_support(str(response["output"]))
     state['follow_up_question']= get_last_question(response["output"])
     return state
 def follow_up_type(state:AgentState):
@@ -397,6 +399,11 @@ def grade_answer(state:AgentState):
     current_task = state['current_task']
     primary_answer = state['primary_answer']
     print("GRADE ANSWER FOR QUESTION ", state['primary_answer'])
+
+    
+
+    
+    
     grading_prompt = f"""
     You are an AI Teaching Assistant.
 
@@ -433,9 +440,83 @@ def grade_answer(state:AgentState):
 
     response = model.invoke([SystemMessage(grading_prompt)])
     print("###GRADE RESPONSE###", response.content)
+    
+
     state["follow_up_question"] = get_last_question(response.content)
     print("##FOLLOW UP TASK##", state["follow_up_question"])
     return state
+def rag_support(text):
+    print("RECEIVED RAG SUPPORT")
+    
+   
+    # Step 1: Use model to identify key concepts to review based on feedback
+    concept_extraction_prompt = f"""
+    You are an AI teaching assistant.
+
+    A student has received the following feedback on their answer:
+    "{text}"
+
+    Your task:
+    - Identify the **main concept(s)** the student should review or focus on to improve.
+    - Be concise and specific (e.g. "alpha-1,6 glycosidic linkages", "role of enzymes in digestion").
+    - List only the keywords or short phrases (no full sentences).
+
+    Output a comma-separated list of key concepts.
+    """.strip()
+
+    response = model.invoke(concept_extraction_prompt)
+    print("CONCEPTS ARE ", response.content)
+
+
+    if not response:
+        return "No key concepts found."
+
+    # Step 2: Use your retrieval tool (vector search) to get top relevant chunks
+    retrieved_chunks = semantic_search(response.content)
+    print("RETRIEVED CHUNKS ", retrieved_chunks)
+      # Step 3: Filter for relevance score > 0.5
+    high_relevance_chunks = [
+        chunk for chunk in retrieved_chunks if  round(chunk.get("score", 0), 1) >= 0.
+    ]
+    
+    if not high_relevance_chunks:
+        print("No relevant content found.")
+        return "No relevant content found."
+
+    # Step 4: Build context from filtered chunks
+    context = "\n\n".join([
+        f"Chunk {i+1}:\n{chunk['text']}" for i, chunk in enumerate(high_relevance_chunks)
+    ])
+    print("##CONTEXT  , ", context)
+    
+    # Step 5: Quote only the directly relevant support from those chunks
+    quote_prompt = f"""
+    
+    You are an AI assistant that helps students reinforce feedback using their course materials.
+
+    Focus area(s): {high_relevance_chunks}
+
+    Below are excerpts from the course materials:
+    ---
+    {context}
+    ---
+
+    Your task:
+    - Quote only the lines or phrases that directly relate to the focus areas above.
+    - Use **verbatim** quotes only — do not paraphrase.
+    - Do not explain or summarize.
+    - If none of the excerpts clearly match the focus areas, respond with: "No relevant content found."
+
+    Begin quoting.
+    """.strip()
+
+
+
+    response2 = model.invoke(quote_prompt)
+    print("QUOTES FOUND ", response2.content)
+    
+
+    return True
 
 
 def get_last_question(text):

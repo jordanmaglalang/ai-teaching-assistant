@@ -39,12 +39,13 @@ def split_into_chunks(text, max_words=100, overlap=30):
 
 def semantic_search(query):
     context_list =[]
+    results_list = []
     index = pc.Index(index_name)
     print("Query is, ", query)
     results = index.search(
         namespace="ns1",
         query={
-            "top_k": 5,
+            "top_k": 3,
             "inputs": {
                 "text": query
             }
@@ -58,10 +59,16 @@ def semantic_search(query):
             
             #print(f"Chunk {hit['_id'][-1]} (score: {hit['_score']}):  Content of chunk {hit['_id'][-1]} : {hit['fields']['chunk_text']}")
             context_list.append(f"Chunk {hit['_id'][-1]} (score: {hit['_score']}):  Content of chunk {hit['_id'][-1]} : {hit['fields']['chunk_text']}")
-    result = '\n\n'.join(context_list)
-    #print(result)
-    return result
+            results_list.append({
+                "text": hit['fields']['chunk_text'],
+                "score": hit['_score']
+            })
+    #result = '\n\n'.join(context_list)
 
+    
+    #print(result)
+    return results_list
+"""
 def main():
     doc_text = get_text_from_pdf(pdf_path)
 
@@ -86,4 +93,4 @@ def main():
     # Perform semantic search
     semantic_search(query)
 
-    
+"""

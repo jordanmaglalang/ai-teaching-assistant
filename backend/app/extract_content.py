@@ -1,5 +1,7 @@
 from docx import Document
 import fitz 
+from pptx import Presentation
+
 def get_doc_content(content):
     doc = Document(path)
     text_content = ""
@@ -15,10 +17,18 @@ def get_text_from_pdf(path):
         text_content += page.get_text() + "\n"  # extract text from each page
     print(text_content)
     return text_content
-
-doc_path = r"C:\Users\jorda\OneDrive\Documents\testing content ta-ai.docx"
-pdf_path = r"C:\Users\jorda\Downloads\cmsc313-assembly-nasm-intro.pdf"
+def get_text_from_ppt(path):
+    prs = Presentation(path)
+    text_content = ""
+    for slide in prs.slides:
+        for shape in slide.shapes:
+            if hasattr(shape, "text"):
+                text_content += shape.text + "\n"
+    print(text_content)
+    return text_content
+#doc_path = r"C:\Users\jorda\OneDrive\Documents\testing content ta-ai.docx"
+#pdf_path = r"C:\Users\jorda\Downloads\cmsc313-assembly-nasm-intro.pdf"
+pptx_path = r"/Users/jordanmaglalang/Library/CloudStorage/OneDrive-Personal/Documents/01-Intro.pptx"
 #pdf_path =r"C:\Users\jorda\Downloads\Carbs (1).pdf"
 #get_doc_content(doc_path)
-get_text_from_pdf(pdf_path)
-print("testing")
+

@@ -377,11 +377,11 @@ You are assisting a student with the following multiple-choice question:
 ✏️ The student’s follow-up message or confusion is:  
 "{current_task}"
 
-Your task is to craft a **single, focused guiding question** that nudges the student to reflect and think critically — without revealing the correct answer directly or using any keywords/phrases from it.
+Your task is to craft a guiding response with a question that makes the student to reflect and think critically — without revealing the correct answer directly or using any keywords/phrases from it.
 
 
 
-Return only the **one Socratic-style guiding question**.
+
 """
 
     response = model.invoke([SystemMessage(guide)])
@@ -442,6 +442,9 @@ def grade_follow_up(state:AgentState):
     - If their answer is **incorrect**:
     - Gently explain that it's not quite right.
     - Offer a helpful hint or ask a guiding question.
+
+    -If their answer is none of the 3 options, respond to them with accordance to their request, in the context of the follow-up question, the answer to the main question, and the main question, without revealing the answer.
+
 
     Keep it supportive and clear, as if you're speaking directly to the student.
     """.strip()

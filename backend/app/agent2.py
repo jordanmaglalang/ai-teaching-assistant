@@ -3,7 +3,7 @@ import os
 # Load environment variables
 _ = load_dotenv()
 api_key = os.getenv("OPENAI_API_KEY")
-from extract_content import get_text_from_pdf, doc_path, pdf_path
+from extract_content import get_text_from_ppt, pptx_path
 from vector_db import initialize_vector_db, split_into_chunks, semantic_search, pc, index_name, query
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import StateGraph, START, state
@@ -28,8 +28,8 @@ model_with_tools = initialize_agent(
 
 
 
-doc_text = get_text_from_pdf(pdf_path)
-chunks = split_into_chunks(doc_text)
+doc_text = get_text_from_ppt(pptx_path)
+chunks = split_into_chunks(pptx_path)
 print(f"Split text into {len(chunks)} chunks.")
 records = []
 for i, chunk in enumerate(chunks):

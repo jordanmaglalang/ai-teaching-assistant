@@ -1,5 +1,5 @@
 from pinecone import Pinecone, ServerlessSpec
-from extract_content import get_text_from_pdf, pdf_path
+
 from dotenv import load_dotenv
 import os
 

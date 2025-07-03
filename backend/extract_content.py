@@ -3,7 +3,7 @@ import fitz
 from pptx import Presentation
 
 def get_doc_content(content):
-    doc = Document(path)
+    doc = Document(content)
     text_content = ""
     for paragraph in doc.paragraphs:
         text_content += paragraph.text + "\n"  # add each paragraph text with a newline

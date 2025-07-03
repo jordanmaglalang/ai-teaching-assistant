@@ -1,4 +1,4 @@
-from agent2 import run_question, model
+#from agent2 import run_question, model
 from extract_content import get_doc_content, get_text_from_pdf, get_text_from_ppt
 import re
 
@@ -40,9 +40,10 @@ Here is the text:
 
 questions=["1. Which of the following is a register used to store the result of arithmetic operations in x86 assembly? A) EIP B) EAX C) ESP D) EFLAGS", "What does the MOV instruction do in x86 assembly? A) Adds two values B) Moves the instruction pointer C) Transfers data from one location to another D) Compares two values"]
 
-questions = get_questions_from_doc("/Users/jordanmaglalang/Library/CloudStorage/OneDrive-Personal/Documents/CMSC 341 hw test1.docx")
+#questions = get_questions_from_doc("/Users/jordanmaglalang/Library/CloudStorage/OneDrive-Personal/Documents/CMSC 341 hw test1.docx")
+"""
 for question in questions:
     print(f"Question: {question}")
     run_question(question)
-  
+  """
 #/Users/jordanmaglalang/Library/CloudStorage/OneDrive-Personal/Documents/CMSC 341 hw test1.docx

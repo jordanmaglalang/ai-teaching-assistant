@@ -55,6 +55,8 @@ class AgentState(TypedDict):
     follow_up_question:str
     follow_up_task: str
     correct_answer: bool
+    full_response: str
+    full_reference:str
     
 
 
@@ -353,9 +355,9 @@ def grade_follow_up2(state:AgentState):
 
     #print("##PROMPT IS FOR RESPONSE TO FOLLOW UP QUESTION##", follow_up_eval_prompt)
     response = model.invoke([SystemMessage(follow_up_eval_prompt)])
-
+    state["full_response"] = response.content
     print("##FOLLOW UP EVAL##", response.content)
-    rag_support(follow_up_question)
+    state["full_reference"]= rag_support(follow_up_question)
     state["follow_up_question"] = get_last_question(response.content)
     return state
 
@@ -386,6 +388,7 @@ Your task is to craft a guiding response with a question that makes the student 
 
     response = model.invoke([SystemMessage(guide)])
     print("###FEEDBACK RESPONSE###", response.content)
+    state["full_response"] = response.content
     state["follow_up_question"] = get_last_question(response.content)
     #print("GET LAST QUESTION TO THE FOLLOW UP QUESTION'S RESPONSE,", state["follow_up_question"])
     return state
@@ -453,6 +456,7 @@ def grade_follow_up(state:AgentState):
    # print("##PROMPT IS##", follow_up_eval_prompt)
     response = model.invoke([SystemMessage(follow_up_eval_prompt)])
     print("##FOLLOW UP EVAL##", response.content)
+    state["full_response"] = response.content
     state['follow_up_question']= get_last_question(response.content)
 
 
@@ -514,6 +518,7 @@ Respond only with your feedback to the student, in second person.
     response = model_with_tools.invoke([SystemMessage(grading_prompt)])
     #print("##RESPONSE GRADE FOR ANSWER## ", grading_prompt)
     print("###GRADE RESPONSE###", response["output"])
+    state["full_response"] = response["output"]
     state["follow_up_question"] = get_last_question(response["output"])
     print(contains_confirmation(response["output"]))
     state["correct_answer"]=contains_confirmation(response["output"])
@@ -592,7 +597,7 @@ def rag_support(text):
     print("QUOTES FOUND ", response2.content)
     
 
-    return True
+    return response2.content
 
 
 
@@ -667,69 +672,89 @@ config = {
             "thread_id": "user-session-1"
         }
     }
-def run_question(first_question):
-    current_primary_task = None
-    current_primary_answer = None
-    current_follow_up_question = None
-    correct_answer = False
-    attempts = 0
-    while correct_answer == False:
-        print("beginning state of correct answer ", correct_answer)
-        if attempts == 0:
-            user_input = first_question
-            print("First question is ", user_input)
-        else:
-            user_input = input("Ask your question (or type 'exit' to quit): ")
-        if user_input.strip().lower() == "exit":
-            print("Goodbye!")
-            break
-        
-        if current_primary_task is None:
-            current_primary_task = user_input
-        if current_primary_answer is None:
-            current_primary_answer = ""
-        initial_input = {
-            "attempts": attempts,
-            "current_task": user_input,
-            "primary_task": current_primary_task,
-            "primary_answer": current_primary_answer,
-            "follow_up_question": current_follow_up_question
-            
-        }
-    
-        for s in graph.stream(initial_input,config):
-            # This yields intermediate states/events, print only final if you want
-            final_state = s 
-        
-        print("Final state keys:", final_state.keys())
-        print("Full final state:", final_state)
-        if "redirect" in final_state:
-            current_primary_task = final_state["redirect"]["primary_task"]
-            current_primary_answer = final_state["redirect"]["primary_answer"]
-            current_follow_up_question = final_state["redirect"]["follow_up_question"]
-            print("###PRIMARY TASK IS ####", current_primary_task)
-        if "grade_answer" in final_state:
-            
-            current_primary_task = final_state["grade_answer"]["primary_task"]
-            current_primary_answer = final_state["grade_answer"]["primary_answer"]
-            current_follow_up_question = final_state["grade_answer"]["follow_up_question"]
-            correct_answer = final_state["grade_answer"]["correct_answer"]
-            print("STATE OF CURRENT ANSWER ", correct_answer)
-            print("##GRADE ANSWER## ", current_primary_task)
-        if "grade_follow_up" in final_state:
-            current_primary_task = final_state["grade_follow_up"]["primary_task"]
-            current_primary_answer = final_state["grade_follow_up"]["primary_answer"]
-            current_follow_up_question = final_state["grade_follow_up"]["follow_up_question"]
-        
-            print("##CURRENT FOLLOW UP QUESTION IS##", current_follow_up_question)
-        if "grade_follow_up2" in final_state:
-            current_primary_task = final_state["grade_follow_up2"]["primary_task"]
-            current_primary_answer = final_state["grade_follow_up2"]["primary_answer"]
-            current_follow_up_question = final_state["grade_follow_up2"]["follow_up_question"]
+# Make sure these are imported properly
 
-            print("##CURRENT FOLLOW UP QUESTION IS##", current_follow_up_question)
-        if "follow_up" in final_state:
-            current_primary_task = final_state["follow_up"]["primary_task"]
-            current_primary_answer = final_state["follow_up"]["primary_answer"]
-            current_follow_up_question = final_state["follow_up"]["follow_up_question"]
-        attempts +=1
+def run_question_step(user_message, session_state):
+    """
+    One step of question interaction for Flask.
+
+    Arguments:
+        user_message (str): the user input or initial question.
+        session_state (dict): state dict carried from previous step.
+
+    Returns:
+        dict: updated state with new primary/follow-up/correct info.
+    """
+
+    # Extract last state
+    current_primary_task = session_state.get("primary_task")
+    current_primary_answer = session_state.get("primary_answer")
+    current_follow_up_question = session_state.get("follow_up_question")
+    current_reference = session_state.get("full_reference", None)
+    attempts = session_state.get("attempts", 0)
+
+    # On first run, use user_message as the task
+    if current_primary_task is None:
+        current_primary_task = user_message
+    if current_primary_answer is None:
+        current_primary_answer = ""
+
+    initial_input = {
+        "attempts": attempts,
+        "current_task": user_message,
+        "primary_task": current_primary_task,
+        "primary_answer": current_primary_answer,
+        "follow_up_question": current_follow_up_question
+    }
+
+    # Run the graph
+    for s in graph.stream(initial_input, config):
+        final_state = s
+
+    # Defaults
+    correct_answer = False
+
+    # Check all possible states — mirror your CLI
+    if "redirect" in final_state:
+        current_primary_task = final_state["redirect"]["primary_task"]
+        current_primary_answer = final_state["redirect"]["primary_answer"]
+        current_follow_up_question = final_state["redirect"]["follow_up_question"]
+        current_response = final_state["redirect"]["full_response"]
+
+    if "grade_answer" in final_state:
+        current_primary_task = final_state["grade_answer"]["primary_task"]
+        current_primary_answer = final_state["grade_answer"]["primary_answer"]
+        current_follow_up_question = final_state["grade_answer"]["follow_up_question"]
+        correct_answer = final_state["grade_answer"]["correct_answer"]
+        current_response = final_state["grade_answer"]["full_response"]
+
+    if "grade_follow_up" in final_state:
+        current_primary_task = final_state["grade_follow_up"]["primary_task"]
+        current_primary_answer = final_state["grade_follow_up"]["primary_answer"]
+        current_follow_up_question = final_state["grade_follow_up"]["follow_up_question"]
+        current_response = final_state["grade_follow_up"]["full_response"]
+    if "grade_follow_up2" in final_state:
+        current_primary_task = final_state["grade_follow_up2"]["primary_task"]
+        current_primary_answer = final_state["grade_follow_up2"]["primary_answer"]
+        current_follow_up_question = final_state["grade_follow_up2"]["follow_up_question"]
+        current_response = final_state["grade_follow_up2"]["full_response"]
+        current_reference = final_state["grade_follow_up2"]["full_reference"]
+    if "follow_up" in final_state:
+        current_primary_task = final_state["follow_up"]["primary_task"]
+        current_primary_answer = final_state["follow_up"]["primary_answer"]
+        current_follow_up_question = final_state["follow_up"]["follow_up_question"]
+        current_response = final_state["follow_up"]["full_response"]
+    attempts += 1
+    if current_reference is None:
+        current_reference = ""
+    return {
+        "primary_task": current_primary_task,
+        "primary_answer": current_primary_answer,
+        "follow_up_question": current_follow_up_question,
+        "correct_answer": correct_answer,
+        "attempts": attempts,
+        "current_response": current_response,
+        "full_reference":current_reference
+        
+    }
+

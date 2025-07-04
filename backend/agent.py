@@ -13,7 +13,7 @@ from typing import Annotated, TypedDict
 from langchain.agents import initialize_agent, AgentType
 from tools import retrieve_relevant_chunks, create_question
 import re
-
+from claude import send_message_to_claude
 
 model = ChatOpenAI()
 tools = [retrieve_relevant_chunks, create_question]
@@ -55,6 +55,8 @@ class AgentState(TypedDict):
     follow_up_question:str
     follow_up_task: str
     correct_answer: bool
+    full_response: str
+    full_reference:str
     
 
 
@@ -353,9 +355,9 @@ def grade_follow_up2(state:AgentState):
 
     #print("##PROMPT IS FOR RESPONSE TO FOLLOW UP QUESTION##", follow_up_eval_prompt)
     response = model.invoke([SystemMessage(follow_up_eval_prompt)])
-
+    state["full_response"] = response.content
     print("##FOLLOW UP EVAL##", response.content)
-    rag_support(follow_up_question)
+    state["full_reference"]= rag_support(follow_up_question)
     state["follow_up_question"] = get_last_question(response.content)
     return state
 
@@ -386,6 +388,7 @@ Your task is to craft a guiding response with a question that makes the student 
 
     response = model.invoke([SystemMessage(guide)])
     print("###FEEDBACK RESPONSE###", response.content)
+    state["full_response"] = response.content
     state["follow_up_question"] = get_last_question(response.content)
     #print("GET LAST QUESTION TO THE FOLLOW UP QUESTION'S RESPONSE,", state["follow_up_question"])
     return state
@@ -422,7 +425,7 @@ def grade_follow_up(state:AgentState):
     📌 Follow-Up Question:
     {follow_up_question}
 
-    ✏️ Your Response:
+    ✏️ Student Response:
     {student_response}
 
     ---
@@ -453,6 +456,8 @@ def grade_follow_up(state:AgentState):
    # print("##PROMPT IS##", follow_up_eval_prompt)
     response = model.invoke([SystemMessage(follow_up_eval_prompt)])
     print("##FOLLOW UP EVAL##", response.content)
+    state["full_response"] = response.content
+    state["full_reference"]= rag_support(student_response)
     state['follow_up_question']= get_last_question(response.content)
 
 
@@ -514,6 +519,7 @@ Respond only with your feedback to the student, in second person.
     response = model_with_tools.invoke([SystemMessage(grading_prompt)])
     #print("##RESPONSE GRADE FOR ANSWER## ", grading_prompt)
     print("###GRADE RESPONSE###", response["output"])
+    state["full_response"] = response["output"]
     state["follow_up_question"] = get_last_question(response["output"])
     print(contains_confirmation(response["output"]))
     state["correct_answer"]=contains_confirmation(response["output"])
@@ -540,7 +546,7 @@ def rag_support(text):
     Output a comma-separated list of key concepts.
     """.strip()
 
-    response = model.invoke(concept_extraction_prompt)
+    response = send_message_to_claude(concept_extraction_prompt)
     #print("CONCEPTS ARE ", response.content)
 
 
@@ -548,7 +554,7 @@ def rag_support(text):
         return "No key concepts found."
 
     # Step 2: Use your retrieval tool (vector search) to get top relevant chunks
-    retrieved_chunks = semantic_search(response.content)
+    retrieved_chunks = semantic_search(response)
     #print("RETRIEVED CHUNKS ", retrieved_chunks)
       # Step 3: Filter for relevance score > 0.5
     high_relevance_chunks = [
@@ -588,11 +594,11 @@ def rag_support(text):
 
 
 
-    response2 = model.invoke(quote_prompt)
-    print("QUOTES FOUND ", response2.content)
+    response2 = send_message_to_claude(quote_prompt)
+    print("QUOTES FOUND ", response2)
     
 
-    return True
+    return response2
 
 
 

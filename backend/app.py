@@ -27,13 +27,15 @@ def ask():
     reply = ""
     if result.get("correct_answer", False):
         reply = "✅ Correct! Moving to next question."
+        reference = ""
         current_index += 1
     else:
         reply = result.get("current_response", "Got it. Keep going!")
-        reply += result.get("full_reference", "")
+        reference = result.get("full_reference", "")
 
     return jsonify({
         "reply": reply,
+        "reference": reference,
         "state": result,
         "index": current_index
     })

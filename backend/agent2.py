@@ -13,7 +13,7 @@ from typing import Annotated, TypedDict
 from langchain.agents import initialize_agent, AgentType
 from tools import retrieve_relevant_chunks, create_question
 import re
-
+from claude import send_message_to_claude
 
 model = ChatOpenAI()
 tools = [retrieve_relevant_chunks, create_question]
@@ -425,7 +425,7 @@ def grade_follow_up(state:AgentState):
     📌 Follow-Up Question:
     {follow_up_question}
 
-    ✏️ Your Response:
+    ✏️ Student Response:
     {student_response}
 
     ---
@@ -457,6 +457,7 @@ def grade_follow_up(state:AgentState):
     response = model.invoke([SystemMessage(follow_up_eval_prompt)])
     print("##FOLLOW UP EVAL##", response.content)
     state["full_response"] = response.content
+    state["full_reference"]= rag_support(student_response)
     state['follow_up_question']= get_last_question(response.content)
 
 
@@ -545,7 +546,7 @@ def rag_support(text):
     Output a comma-separated list of key concepts.
     """.strip()
 
-    response = model.invoke(concept_extraction_prompt)
+    response = send_message_to_claude(concept_extraction_prompt)
     #print("CONCEPTS ARE ", response.content)
 
 
@@ -553,7 +554,7 @@ def rag_support(text):
         return "No key concepts found."
 
     # Step 2: Use your retrieval tool (vector search) to get top relevant chunks
-    retrieved_chunks = semantic_search(response.content)
+    retrieved_chunks = semantic_search(response)
     #print("RETRIEVED CHUNKS ", retrieved_chunks)
       # Step 3: Filter for relevance score > 0.5
     high_relevance_chunks = [
@@ -593,11 +594,11 @@ def rag_support(text):
 
 
 
-    response2 = model.invoke(quote_prompt)
-    print("QUOTES FOUND ", response2.content)
+    response2 = send_message_to_claude(quote_prompt)
+    print("QUOTES FOUND ", response2)
     
 
-    return response2.content
+    return response2
 
 
 
@@ -733,6 +734,7 @@ def run_question_step(user_message, session_state):
         current_primary_answer = final_state["grade_follow_up"]["primary_answer"]
         current_follow_up_question = final_state["grade_follow_up"]["follow_up_question"]
         current_response = final_state["grade_follow_up"]["full_response"]
+        current_reference = final_state["grade_follow_up"]["full_reference"]
     if "grade_follow_up2" in final_state:
         current_primary_task = final_state["grade_follow_up2"]["primary_task"]
         current_primary_answer = final_state["grade_follow_up2"]["primary_answer"]

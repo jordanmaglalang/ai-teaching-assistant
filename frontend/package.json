@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "backend": "cd ../backend && flask --app app run --port=8000",
     "dev:all": "concurrently \"npm run dev\" \"npm run backend\""
+
   },
   "dependencies": {
     "axios": "^1.10.0",

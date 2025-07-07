@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 interface Message {
-  role: "system" | "user";
+  role: "system" | "user" | "reference";
   text: string;
 }
 
@@ -26,21 +26,26 @@ export default function ChatApp() {
       });
 
       const reply = res.data.reply;
+      const reference = res.data.reference;
       const newState = res.data.state;
       const newIndex = res.data.index;
 
-      // Append user message if it's not empty
+      // Add user message if not empty
       if (message.trim()) {
         setMessages((prev) => [...prev, { role: "user", text: message }]);
       }
 
-      // Append bot reply
-      setMessages((prev) => [...prev, { role: "system", text: reply }]);
+      // Add system reply and reference together
+      setMessages((prev) => [
+        ...prev,
+        { role: "system", text: reply },
+        ...(reference && reference.trim()
+          ? [{ role: "reference", text: reference }as Message]
+          : []),
+      ]);
 
-      // Update state and index
       setSessionState(newState);
       setQuestionIndex(newIndex);
-
       setInput("");
     } catch (err) {
       console.error(err);
@@ -66,9 +71,11 @@ export default function ChatApp() {
             <div
               key={idx}
               className={`p-2 my-1 rounded ${
-                msg.role === "system"
-                  ? "bg-blue-100 text-left"
-                  : "bg-green-100 text-right"
+                msg.role === "user"
+                  ? "bg-green-100 text-right"
+                  : msg.role === "reference"
+                  ? "bg-gray-200 text-left text-sm italic"
+                  : "bg-blue-100 text-left"
               }`}
             >
               {msg.text}

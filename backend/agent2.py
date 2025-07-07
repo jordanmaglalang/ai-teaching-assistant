@@ -26,24 +26,24 @@ model_with_tools = initialize_agent(
     
 )
 
+def prepare_vector_index():
+    doc_text = get_text_from_ppt(pptx_path)
+    chunks = split_into_chunks(pptx_path)
+    print(f"Split text into {len(chunks)} chunks.")
+    records = []
+    for i, chunk in enumerate(chunks):
+        records.append({
+            "_id": f"resume-chunk-{i}",
+            "chunk_text": chunk,
+            "category": "resume"
+        })
+    initialize_vector_db(index_name)
+    index = pc.Index(index_name)
+    print("Upserting records...")
+    index.upsert_records("ns1", records)
+    print(f"Upserted {len(records)} chunks into namespace 'ns1'.")
 
 
-doc_text = get_text_from_ppt(pptx_path)
-chunks = split_into_chunks(pptx_path)
-print(f"Split text into {len(chunks)} chunks.")
-records = []
-for i, chunk in enumerate(chunks):
-    records.append({
-        "_id": f"resume-chunk-{i}",
-        "chunk_text": chunk,
-        "category": "resume"
-    })
-initialize_vector_db(index_name)
-
-index = pc.Index(index_name)
-print("Upserting records...")
-index.upsert_records("ns1", records)
-print(f"Upserted {len(records)} chunks into namespace 'ns1'.")
 
 
 class AgentState(TypedDict):

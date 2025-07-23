@@ -1,5 +1,5 @@
 from pinecone import Pinecone, ServerlessSpec
-
+from extract_content import get_text_from_ppt, get_text_from_pdf, pptx_path
 from dotenv import load_dotenv
 import os
 
@@ -26,7 +26,35 @@ def initialize_vector_db(index_name):
                 "field_map":{"text": "chunk_text"}
             }
         )
-    
+  
+def prepare_vector_index(file, tutor_id):
+    if file.filename.endswith(".pdf"):
+        doc_text = get_text_from_pdf(file)
+    elif file.filename.endswith(".pptx"):
+        doc_text = get_text_from_ppt(file)
+    else:
+        raise ValueError("Unsupported file type")
+
+    chunks = split_into_chunks(doc_text)
+    print(f"Split text into {len(chunks)} chunks.")
+    records = []
+    for i, chunk in enumerate(chunks):
+        records.append({
+            "_id": f"{tutor_id}-chunk-{i}",
+            "chunk_text": chunk,
+            "metadata":  str(tutor_id)
+        })
+
+    initialize_vector_db(index_name)
+    index = pc.Index(index_name)
+
+    # ✅ Use tutor_id as namespace
+    namespace = str(tutor_id)
+
+    print(f"Upserting {len(records)} chunks to namespace {namespace}")
+    index.upsert_records(namespace, records)
+    print("Upsert complete")
+
 
 def split_into_chunks(text, max_words=100, overlap=30):
     words = text.split()

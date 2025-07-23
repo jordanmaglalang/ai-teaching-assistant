@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 
 type AssignmentType = {
@@ -10,6 +10,7 @@ type AssignmentType = {
 
 export default function AssignmentsDashboard() {
   const { tutorId } = useParams<{ tutorId: string }>();
+  const navigate = useNavigate(); // ✅
 
   const [assignments, setAssignments] = useState<AssignmentType[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,17 +59,14 @@ export default function AssignmentsDashboard() {
         },
       });
 
-      // Close modal & clear inputs
       setIsModalOpen(false);
       setNewAssignmentName("");
       setNewFiles(null);
 
-      // Re-fetch assignments
       const response = await axios.get("http://localhost:8000/assignments", {
         params: { tutorId },
       });
       setAssignments(response.data);
-
     } catch (err) {
       alert("Failed to add assignment");
     }
@@ -97,6 +95,15 @@ export default function AssignmentsDashboard() {
               <li key={index}>{file}</li>
             ))}
           </ul>
+
+          <button
+            className="btn btn-primary"
+            onClick={() =>
+              navigate(`/tutor/${tutorId}/assignment/${assignment._id}`)
+            }
+          >
+            Work on Assignment
+          </button>
         </div>
       ))}
 

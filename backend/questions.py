@@ -1,49 +1,83 @@
-from agent import run_question, model
-from extract_content import get_doc_content, get_text_from_pdf, get_text_from_ppt
+import subprocess
+import json
+from extract_content import get_text_from_pdf, pdf_path
+import fitz  # PyMuPDF
 import re
+import json
+from agent2 import run_question_step
+from models import send_message_to_ollama
+# -----------------------------
+# 1️⃣ Extract text from PDF
+def get_text_from_pdf(pdf_path):
+    doc = fitz.open(pdf_path)
+    text = ""
+    for page in doc:
+        text += page.get_text() + "\n"
+    return text
 
-def get_questions_from_doc(path):
-    text_content = get_doc_content(path)
-    print(text_content)
-    list_questions = f"""
-    Please extract all questions from the following text. The questions may be:
+# -----------------------------
+# 2️⃣ Heuristic regex-based extractor
+def extract_questions(text):
+    lines = text.split('\n')
+    tasks = []
+    current_task = None
 
-- Numbered with integers like 1., 2., 3., etc.
-- Have subparts labeled with letters like a., b., c.
-- Span multiple lines.
-- May or may not end with question marks.
+    # Regex patterns
+    main_q = re.compile(r"^\s*\d+\s*[-–.)]?\s")   # 1 - ... or 1) ...
+    sub_q = re.compile(r"^\s*[a-zA-Z]\s*[-–.)]?\s")  # a - ... or a) ...
 
-Treat each top-level number (e.g., 1, 2, 3) and its subparts as separate questions.
+    for line in lines:
+        line = line.strip()
+        if not line:
+            continue
 
-Output a clean numbered list starting with 1, 2, 3, ..., ignoring the original labels.
+        if main_q.match(line):
+            # Save previous
+            if current_task:
+                tasks.append(current_task)
+            # New main
+            current_task = {"main_task": line, "subtasks": []}
 
-Keep the order the questions appear.
+        elif sub_q.match(line):
+            if current_task:
+                current_task["subtasks"].append(line)
+            else:
+                # Orphan subtask
+                pass
 
-Here is the text:
+        else:
+            # Probably a continuation line
+            if current_task:
+                if current_task["subtasks"]:
+                    current_task["subtasks"][-1] += " " + line
+                else:
+                    current_task["main_task"] += " " + line
 
-{text_content}
-"""
+    if current_task:
+        tasks.append(current_task)
 
-    response = model.invoke(list_questions)
-    text = response.content.strip()
+    return tasks
 
-    questions = re.split(r'\n?\s*\d+\.\s+', text)
-    if questions[0].strip() == '':
-        questions = questions[1:]
-    for i, q in enumerate(questions, 1):
-        print(f"{i}. {q.strip()}")
+# -----------------------------
+def ollama_query(prompt: str) -> str:
+    # Call ollama CLI with the prompt, capture output
+    result = subprocess.run(
+        ["ollama", "run", "mistral:instruct"],
+        input=prompt.encode("utf-8"),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Ollama error: {result.stderr.decode()}")
+    return result.stdout.decode()
 
 
-    return questions
+if __name__ == "__main__":
+   
 
+    pdf_file = pdf_path  # Make sure pdf_path is set correctly
 
-
-questions=["1. Which of the following is a register used to store the result of arithmetic operations in x86 assembly? A) EIP B) EAX C) ESP D) EFLAGS", "What does the MOV instruction do in x86 assembly? A) Adds two values B) Moves the instruction pointer C) Transfers data from one location to another D) Compares two values"]
-
-#questions = get_questions_from_doc("/Users/jordanmaglalang/Library/CloudStorage/OneDrive-Personal/Documents/CMSC 341 hw test1.docx")
-def run_assignment(questions):
-    for question in questions:
-        print(f"Question: {question}")
-        run_question(question)
-
-#/Users/jordanmaglalang/Library/CloudStorage/OneDrive-Personal/Documents/CMSC 341 hw test1.docx
+    # 1️⃣ Open and read PDF text
+    text = get_text_from_pdf(pdf_file)
+    tasks = extract_questions(text)
+    print(json.dumps(tasks, indent=2, ensure_ascii=False))

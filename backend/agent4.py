@@ -193,6 +193,7 @@ Student's confusion:
     response = send_message_to_claude(guide)
     print("###FEEDBACK RESPONSE###", response)
     state["full_response"] = response
+    state["full_reference"] = rag_support(response)
     state["follow_up_question"] = get_last_question(response)
     return state
 
@@ -225,7 +226,9 @@ Reply to the student without revealing the answer.
     response = send_message_to_claude(follow_up_eval_prompt)
     print("### GRADE FOLLOW-UP RESPONSE###", response)
     state["full_response"] = response
-    #state["full_reference"] = rag_support(response)
+    print("semantic search for ,", response)
+    state["full_reference"] = rag_support(response)
+    print("RAG SUPPORT IS ", state["full_reference"])
     state["follow_up_question"] = get_last_question(response)
     return state
 
@@ -266,13 +269,10 @@ Correct (internal only):
     return state
 
 def rag_support(text):
-   
     retrieved_chunks = semantic_search(text)
     high_relevance_chunks = [
-        chunk for chunk in retrieved_chunks if round(chunk.get("score", 0), 1) >= 0
+        chunk for chunk in retrieved_chunks if chunk.get("score", 0) >= 0.4
     ]
-    
-    
     return high_relevance_chunks[0]["text"] if high_relevance_chunks else "No relevant content found."
 
 def get_last_question(text):

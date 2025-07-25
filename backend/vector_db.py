@@ -49,7 +49,8 @@ def prepare_vector_index(file, tutor_id):
     index = pc.Index(index_name)
 
     # ✅ Use tutor_id as namespace
-    namespace = str(tutor_id)
+    #namespace = str(tutor_id)
+    namespace = "6882f38474f97b6061ec2b9e"  # Example namespace, replace with actual tutor_id if needed
 
     print(f"Upserting {len(records)} chunks to namespace {namespace}")
     index.upsert_records(namespace, records)
@@ -71,7 +72,7 @@ def semantic_search(query):
     index = pc.Index(index_name)
     print("Query is, ", query)
     results = index.search(
-        namespace="ns1",
+        namespace="6882f38474f97b6061ec2b9e",
         query={
             "top_k": 3,
             "inputs": {

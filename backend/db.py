@@ -49,26 +49,26 @@ def add_assignment(tutor_id, assignment_name, assignment_content):
 
     questions = []
     for pdf_file in assignment_content:
-        # Read the PDF content from the file stream
-        pdf_bytes = pdf_file.read()  # read bytes from FileStorage
+        pdf_bytes = pdf_file.read()
 
-        # Open PDF from bytes with PyMuPDF
         with fitz.open(stream=pdf_bytes, filetype="pdf") as doc:
             text = ""
             for page in doc:
                 text += page.get_text() + "\n"
 
-        # Now extract questions from the extracted text
         questions += extract_questions(text)
 
-    # Save assignment and questions info to DB, example:
+    # ✅ Add attempts=0 for each question
+    for q in questions:
+        q["attempts"] = 0
+
     file_names = [file.filename for file in assignment_content]
 
     assignment = {
         "tutor_id": ObjectId(tutor_id),
         "assignment_name": assignment_name,
         "files": file_names,
-        "questions": questions  # optionally save questions too
+        "questions": questions
     }
     result = assignments_collection.insert_one(assignment)
 

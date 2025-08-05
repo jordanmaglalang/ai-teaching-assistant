@@ -195,6 +195,7 @@ Student's confusion:
     state["full_response"] = response
     state["full_reference"] = rag_support(response)
     state["follow_up_question"] = get_last_question(response)
+    state["attempts"] +=1
     return state
 
 def answer_type(state: AgentState):
@@ -230,6 +231,7 @@ Reply to the student without revealing the answer.
     state["full_reference"] = rag_support(response)
     print("RAG SUPPORT IS ", state["full_reference"])
     state["follow_up_question"] = get_last_question(response)
+    state["attempts"] +=1
     return state
 
 def grade_follow_up2(state: AgentState):
@@ -265,6 +267,9 @@ Correct (internal only):
     state["follow_up_question"] = get_last_question(response)
     if state["correct_answer"]== True:
         state["attempts"]=0
+    else:
+        print("INCORRECT ANSWER, INCREASING ATTEMPTS")
+        state["attempts"] += 1
 
     return state
 
@@ -381,9 +386,8 @@ def run_question_step(user_message, session_state):
     correct_answer = state_data["correct_answer"]
     current_response = state_data["full_response"]
     current_reference = state_data["full_reference"]
-
-    attempts += 1
-
+    attempts = state_data["attempts"]
+    
     if current_follow_up_question is None and len(current_sub_questions) > 0:
         current_follow_up_question = current_sub_questions.pop(0)
 

@@ -31,7 +31,7 @@ def send_message_to_claude(user_message: str):
         if "Socratic" in user_message or "guiding question" in user_message:
             return "Interesting thought. What do you think causes this process to happen?"
         if "yes" in user_message:
-            return "Great! Can you explain why you think that?"
+            return "You are right!"
         return "This is a mock Claude response. What would you like to know? Maybe about the mitochondria? Or the cell structure? Or something else? Let's keep it simple and focused on biology.   What do you think the mitochondria does?  What is the role of the mitochondria in a cell? What do you think the mitochondria does? What do you think the mitochondria does? What do you think the mitochondria does? What do you think the mitochondria does? What do you think the mitochondria does? What do you think the mitochondria does? What do you think the mitochondria does? What do you think the mitochondria does?"
     else:
         response = client.messages.create(

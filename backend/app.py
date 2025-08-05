@@ -53,6 +53,7 @@ def get_assignments():
     for a in assignments:
         a["_id"] = str(a["_id"])
         a["tutor_id"] = str(a["tutor_id"])
+        a["score"] = a.get("score")
     return jsonify(assignments)
 @app.route("/assignments/<assignment_id>", methods=["GET"])
 def get_assignment(assignment_id):
@@ -80,6 +81,7 @@ def ask():
     index = data.get("index", 0)
     reference = ""
     
+    
 
     print("MESSAGE IS:", user_message)
 
@@ -106,7 +108,7 @@ def ask():
 
     # Create new state if first time or forced new
     if session_state == {} or not session_state:
-        is_new_question = False
+        
         print("CREATING NEW SESSION STATE")
         working_subtasks = subtasks.copy()
         follow_up = working_subtasks.pop(0) if working_subtasks else None
@@ -143,15 +145,42 @@ def ask():
     # Check if user confirmed correct or LLM marked correct
     if user_message.strip().lower() == "yes" or result.get("correct_answer") == True:
         print("✅ Marking as correct and advancing")
+        
+        # ✅ Save attempts for this question
+        assignments_collection.update_one(
+            {"_id": ObjectId(assignment_id)},
+            {"$set": {f"questions.{index}.attempts": result["attempts"]}}
+        )
+
         reply = "✅ Correct! " + reply
         index += 1
+        result["correct_answer"]=True
 
         if index >= len(questions):
+            # ✅ Assignment done — calculate final average
+            assignment = assignments_collection.find_one({"_id": ObjectId(assignment_id)})
+            total_attempts = sum(q.get("attempts", 0) for q in assignment["questions"])
+            avg_attempts = total_attempts / len(questions)
+            print("Average attempts:", avg_attempts)
+            score = max(0, min(100, 100 - (avg_attempts - 1) * 10))
+            # ✅ Optionally store final average in DB too
+            assignments_collection.update_one(
+                {"_id": ObjectId(assignment_id)},
+                {"$set": {"average_attempts": avg_attempts, "score":score}}
+            )
+            
+
+            reply += f"\n\n🎉 Assignment complete! Average attempts: {avg_attempts:.2f} and the score is {score}"
+            
             return jsonify({
-                "reply": "✅ All done!",
+                "reply": reply,
                 "state": {},
                 "index": index
+
             })
+
+        
+
         else:
             next_main_q = questions[index]["main_task"]
             next_subtasks = questions[index].get("subtasks", [])
@@ -173,15 +202,47 @@ def ask():
             }
 
     print("CURRENT STATE:", result)
-
+    if result["correct_answer"] == True:
+        result["correct_answer"] = False
+        result["attempts"] = 0
     return jsonify({
-        "reply": reply.strip() + "\n\n\n STATE: :"+ str(result)+ "\n\n\n" ,
+        "reply": reply.strip() + "\n\n\n STATE: :"+ str(result["attempts"])+ "\n\n\n"+ str(result["correct_answer"]) ,
         "reference": reference,
         "state": result,
         "index": index,
         
+        
     })
 
+@app.route("/course_score", methods=["GET"])
+def get_course_score():
+    tutor_id = request.args.get("tutorId")
+    if not tutor_id:
+        return jsonify({"error": "Missing tutorId"}), 400
+
+    assignments = list(assignments_collection.find({"tutor_id": ObjectId(tutor_id)}))
+    scored = [a for a in assignments if "score" in a and a["score"] is not None]
+
+    if not scored:
+        return jsonify({"average_score": None, "num_graded": 0, "total": len(assignments)})
+
+    average = sum(a["score"] for a in scored) / len(scored)
+    return jsonify({
+        "average_score": round(average, 2),
+        "num_graded": len(scored),
+        "total": len(assignments)
+    })
+@app.route("/delete_assignment", methods=["DELETE"])
+def delete_assignment():
+    assignment_id = request.args.get("assignmentId")
+    if not assignment_id:
+        return jsonify({"error": "Missing assignmentId"}), 400
+
+    result = assignments_collection.delete_one({"_id": ObjectId(assignment_id)})
+    if result.deleted_count == 0:
+        return jsonify({"error": "Assignment not found"}), 404
+
+    return jsonify({"message": "Assignment deleted"}), 200
 
 if __name__ == "__main__":
     app.run(port=8000, debug=True)

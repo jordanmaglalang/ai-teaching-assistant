@@ -16,7 +16,6 @@ export default function ChatApp() {
   const [input, setInput] = useState("");
   const [sessionState, setSessionState] = useState({});
   const [questionIndex, setQuestionIndex] = useState(0);
-
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const [headerTextType, setHeaderTextType] = useState<"question" | "label">(
     "question"
@@ -37,11 +36,17 @@ export default function ChatApp() {
   }, [assignmentId]);
 
   useEffect(() => {
-    if (assignmentId) {
+    if (!assignmentId) return;
+
+    const key = `started-${assignmentId}`;
+    const alreadyStarted = sessionStorage.getItem(key);
+
+    if (!alreadyStarted) {
+      console.log("🚀 Sending first question");
       handleSend("");
+      sessionStorage.setItem(key, "true");
     }
   }, [assignmentId]);
-
   useEffect(() => {
     if (messagesEndRef.current) {
       messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
@@ -98,7 +103,8 @@ export default function ChatApp() {
       setMessages((prev) => [
         ...prev,
         { role: "system", text: reply },
-        ...(reference && reference.trim()
+        ...(reference && reference.trim() !== "" && reference.trim().toLowerCase() !== "No relevant content found"
+
           ? [{ role: "reference", text: reference } as Message]
           : []),
       ]);
@@ -174,15 +180,15 @@ export default function ChatApp() {
         <div className="d-flex flex-column gap-3">
           {messages.map((msg, idx) => (
             <div
-              key={idx}
-              className={`d-flex ${
-                msg.role === "user"
-                  ? "justify-content-end"
-                  : "justify-content-start"
-              }`}
-            >
-              <FadeInBubble msg={msg} />
-            </div>
+            key={idx}
+            className={`d-flex ${
+              msg.role === "user" ? "justify-content-end" : "justify-content-center"
+            }`}
+          >
+            <FadeInBubble msg={msg} />
+          </div>
+
+
           ))}
           <div ref={messagesEndRef} />
         </div>
@@ -275,10 +281,12 @@ function FadeInBubble({ msg }: { msg: Message }) {
     return () => clearInterval(interval);
   }, [msg]);
 
-  const baseStyle = {
+    const baseStyle = {
     maxWidth: "70%",
     wordWrap: "break-word",
   };
+
+
 
   if (msg.role === "user") {
     return (
@@ -297,41 +305,54 @@ function FadeInBubble({ msg }: { msg: Message }) {
   }
 
   if (msg.role === "system") {
-    return (
-      <div
-        className={`fade-in ${visible ? "appear" : ""}`}
-        style={{
-          ...baseStyle,
-          backgroundColor: "white",
-          color: "black",
-          padding: "12px 15px",
-          borderRadius: 0,
-          border: "none",
-          fontSize: "1rem",
-          fontWeight: "normal",
-        }}
-      >
-        {displayedText}
-      </div>
-    );
-  }
+  return (
+    <div
+      className={`fade-in ${visible ? "appear" : ""}`}
+      style={{
+    ...baseStyle,
+    width: "100%",
+    maxWidth: "700px",
+    backgroundColor: "#f5f5f5",
+    color: "#333",
+    padding: "16px 20px",
+    borderRadius: "12px",
+    fontSize: "0.95rem",
+    boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
+    border: "1px solid #ddd",
+    whiteSpace: "pre-wrap",
+  }}
+
+    >
+      {displayedText}
+    </div>
+      );
+    }
 
   if (msg.role === "reference") {
-    return (
-      <div
-        className={`p-3 rounded-4 bg-light text-dark border-start border-warning border-4 fade-in ${
-          visible ? "appear" : ""
-        }`}
-        style={{
-          ...baseStyle,
-          borderBottomLeftRadius: "0.375rem",
-        }}
-      >
-        <div className="small text-muted fw-bold mb-1">📚 Reference:</div>
-        <div>{msg.text}</div>
-      </div>
-    );
-  }
+      return (
+        <div
+          className={`fade-in ${visible ? "appear" : ""}`}
+          style={{
+            ...baseStyle,
+            backgroundColor: "#f0fff4", // softer dark white
+            color: "#333",
+            padding: "16px 20px",
+            borderRadius: "12px",
+            fontFamily: "monospace",
+            fontSize: "0.95rem",
+            boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
+            border: "1px solid #4CAF50",
+            width: "100%",
+            maxWidth: "700px",
+            whiteSpace: "pre-wrap",
+          }}
+        >
+          <div className="small text-muted fw-bold mb-2">📚 Reference:</div>
+          <div>{msg.text}</div>
+        </div>
+      );
+    }
+
 
   if (msg.role === "loading") {
     return (

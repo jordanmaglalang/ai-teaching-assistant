@@ -1,7 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from bson import ObjectId
-
+from datetime import datetime
 from agent4 import run_question_step  # your LangGraph logic
 from db import (
     add_tutor,
@@ -36,10 +36,43 @@ def get_tutors():
     if not user_id:
         return jsonify({"error": "Missing userId"}), 400
 
-    tutors = list(tutors_collection.find({"user_id": ObjectId(user_id)}))
-    for tutor in tutors:
-        tutor["_id"] = str(tutor["_id"])
-        tutor["user_id"] = str(tutor["user_id"])
+    tutors_raw = list(tutors_collection.find({"user_id": ObjectId(user_id)}))
+    tutors = []
+
+    for tutor in tutors_raw:
+        tutor_id = tutor["_id"]
+        assignments = list(assignments_collection.find({"tutor_id": tutor_id}))
+
+        scored = [a for a in assignments if "score" in a and a["score"] is not None]
+        avg_score = (
+            sum(a["score"] for a in scored) / len(scored)
+            if scored else None
+        )
+
+        recent_assignments = sorted(
+            assignments, 
+            key=lambda x: x.get("_id"),
+            reverse=True
+        )[:3]
+
+        recent_cleaned = [
+            {
+                "title": a.get("assignment_name", "Untitled"),
+                "score": a.get("score"),
+                "total": 100,  # You can make this dynamic if needed
+                "date": a.get("date", datetime.utcnow()).strftime("%Y-%m-%d")
+            }
+            for a in recent_assignments
+        ]
+
+        tutors.append({
+            "_id": str(tutor["_id"]),
+            "user_id": str(tutor["user_id"]),
+            "course_name": tutor.get("course_name", "Untitled Course"),
+            "average_score": round(avg_score, 2) if avg_score is not None else None,
+            "recent_assignments": recent_cleaned
+        })
+
     return jsonify(tutors)
 
 
@@ -244,5 +277,30 @@ def delete_assignment():
 
     return jsonify({"message": "Assignment deleted"}), 200
 
+@app.route("/delete_tutor", methods=["DELETE"])
+def delete_tutor():
+    tutor_id = request.args.get("tutorId")
+    if not tutor_id:
+        return jsonify({"error": "Missing tutorId"}), 400
+
+    try:
+        # First, delete all assignments associated with this tutor
+        assignments_result = assignments_collection.delete_many({"tutor_id": ObjectId(tutor_id)})
+        
+        # Then delete the tutor itself
+        tutor_result = tutors_collection.delete_one({"_id": ObjectId(tutor_id)})
+        
+        if tutor_result.deleted_count == 0:
+            return jsonify({"error": "Tutor not found"}), 404
+
+        return jsonify({
+            "message": "Tutor deleted successfully",
+            "assignments_deleted": assignments_result.deleted_count,
+            "tutor_deleted": tutor_result.deleted_count
+        }), 200
+
+    except Exception as e:
+        print(f"Error deleting tutor: {e}")
+        return jsonify({"error": "Failed to delete tutor"}), 500
 if __name__ == "__main__":
     app.run(port=8000, debug=True)

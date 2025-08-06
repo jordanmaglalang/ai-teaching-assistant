@@ -6,6 +6,8 @@ import TutorsDashboard from "./TutorsDashboard";
 import AssignmentsDashboard from "./AssignmentsDashboard";
 import AddAssignmentPage from "./AddAssignmentPage";
 import ChatApp from "./ChatApp";
+import TeacherDashboard from "./TeacherDashboard";
+import AIQueryPage from "./AIQueryPage";
 
 export default function App() {
   return (
@@ -16,6 +18,8 @@ export default function App() {
         <Route path="/tutor/:tutorId" element={<AssignmentsDashboard />} />
         <Route path="/tutor/:tutorId/new-assignment" element={<AddAssignmentPage />} />
         <Route path="/tutor/:tutorId/assignment/:assignmentId" element={<ChatApp />} />
+        <Route path="/teacher-dashboard" element={<TeacherDashboard />} />
+        <Route path="/ai-query" element={<AIQueryPage />} />
       </Routes>
     </BrowserRouter>
   );

@@ -2,8 +2,8 @@ from flask import jsonify
 from pymongo import MongoClient
 from bson import ObjectId
 import os
-from vector_db import prepare_vector_index
-from extract_content import get_text_from_pdf
+from vector_db import prepare_vector_index, prepare_topic_vector_index
+from extract_content import get_text_from_pdf, extract_text_from_file
 from questions import extract_questions
 import fitz  # 
 client = MongoClient(os.getenv("MONGO_DB_KEY"), tls=True,tlsAllowInvalidCertificates=True)
@@ -13,6 +13,7 @@ db = client["ai-tutor"]
 users_collection = db["users"]
 tutors_collection = db["tutors"]
 assignments_collection = db["assignments"]
+teacher_materials_collection = db["teacher_materials"]
 
 def add_tutor(user_id, course_name, resource_content):
     if not user_id or not course_name:
@@ -73,3 +74,71 @@ def add_assignment(tutor_id, assignment_name, assignment_content):
     result = assignments_collection.insert_one(assignment)
 
     return jsonify({"inserted_id": str(result.inserted_id)})
+
+def add_teacher_material(teacher_id, title, topic, description, file):
+    """
+    Add teacher material with topic tagging for vector search
+    """
+    if not teacher_id or not title or not topic or not file:
+        return jsonify({"error": "Missing required fields"}), 400
+    
+    try:
+        # Extract text content from file
+        content = extract_text_from_file(file)
+        
+        # Create material document
+        material = {
+            "teacher_id": teacher_id,
+            "title": title,
+            "topic": topic,
+            "description": description or "",
+            "file_path": file.filename,
+            "content": content,
+            "timestamp": ObjectId().generation_time
+        }
+        
+        # Insert into MongoDB
+        result = teacher_materials_collection.insert_one(material)
+        material_id = str(result.inserted_id)
+        
+        # Add to vector database with topic namespace
+        prepare_topic_vector_index(file, content, topic, material_id)
+        
+        return jsonify({
+            "message": "Material uploaded successfully",
+            "material_id": material_id
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Failed to process file: {str(e)}"}), 500
+
+def search_materials_by_topic(topic, query, top_k=5):
+    """
+    Search teacher materials by topic using vector search
+    """
+    try:
+        from vector_db import semantic_search_by_topic
+        
+        # Get vector search results
+        vector_results = semantic_search_by_topic(topic, query, top_k)
+        
+        # Get material metadata for each result
+        materials = []
+        for result in vector_results:
+            material_id = result.get('material_id')
+            if material_id:
+                material = teacher_materials_collection.find_one({"_id": ObjectId(material_id)})
+                if material:
+                    materials.append({
+                        "title": material["title"],
+                        "topic": material["topic"],
+                        "description": material["description"],
+                        "content_snippet": result["text"],
+                        "score": result["score"]
+                    })
+        
+        return materials
+        
+    except Exception as e:
+        print(f"Error searching materials: {str(e)}")
+        return []

@@ -6,9 +6,12 @@ from agent4 import run_question_step  # your LangGraph logic
 from db import (
     add_tutor,
     add_assignment,
+    add_teacher_material,
+    search_materials_by_topic,
     tutors_collection,
     assignments_collection,
 )
+from vector_db import get_available_topics
 
 app = Flask(__name__)
 CORS(app, origins=["http://localhost:5173"])
@@ -243,6 +246,67 @@ def delete_assignment():
         return jsonify({"error": "Assignment not found"}), 404
 
     return jsonify({"message": "Assignment deleted"}), 200
+
+@app.route("/upload_material", methods=["POST"])
+def upload_material():
+    """
+    Upload teacher material with topic tagging
+    """
+    teacher_id = request.form.get("teacherId", "test_teacher_01")  # Default for MVP
+    title = request.form.get("title")
+    topic = request.form.get("topic")
+    description = request.form.get("description", "")
+    
+    if 'file' not in request.files:
+        return jsonify({"error": "No file provided"}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({"error": "No file selected"}), 400
+    
+    # Check file type
+    allowed_extensions = {'.pdf', '.docx', '.pptx', '.txt'}
+    file_ext = '.' + file.filename.rsplit('.', 1)[1].lower() if '.' in file.filename else ''
+    
+    if file_ext not in allowed_extensions:
+        return jsonify({"error": f"Unsupported file type. Allowed: {', '.join(allowed_extensions)}"}), 400
+    
+    return add_teacher_material(teacher_id, title, topic, description, file)
+
+@app.route("/search_materials", methods=["POST"])
+def search_materials():
+    """
+    Search teacher materials by topic and query
+    """
+    data = request.json
+    topic = data.get("topic")
+    query = data.get("query")
+    top_k = data.get("top_k", 5)
+    
+    if not topic or not query:
+        return jsonify({"error": "Missing topic or query"}), 400
+    
+    try:
+        results = search_materials_by_topic(topic, query, top_k)
+        return jsonify({
+            "results": results,
+            "topic": topic,
+            "query": query
+        }), 200
+        
+    except Exception as e:
+        return jsonify({"error": f"Search failed: {str(e)}"}), 500
+
+@app.route("/topics", methods=["GET"])
+def get_topics():
+    """
+    Get available topics for dropdown selection
+    """
+    try:
+        topics = get_available_topics()
+        return jsonify({"topics": topics}), 200
+    except Exception as e:
+        return jsonify({"error": f"Failed to get topics: {str(e)}"}), 500
 
 if __name__ == "__main__":
     app.run(port=8000, debug=True)

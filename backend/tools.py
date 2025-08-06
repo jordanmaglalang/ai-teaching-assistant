@@ -1,7 +1,11 @@
 from langchain_community.tools import tool
 from vector_db import semantic_search
 from langchain_openai import ChatOpenAI
-model2 = ChatOpenAI()
+import os
+
+# Only initialize if API key is available
+GPT_API_KEY = os.getenv("OPENAI_API_KEY")
+model2 = ChatOpenAI() if GPT_API_KEY else None
 @tool
 def retrieve_relevant_chunks(query:str)->str:
     """
@@ -36,27 +40,35 @@ def create_question(topic: str, concept_explained: str) -> str:
     """.strip()
 
     # Now send to GPT
-    response = model2.invoke(prompt)
-    print("##CREATE QUESTION## ", response.content)
-    answer_extraction_prompt = f"""
-    You are an expert AI Teaching Assistant.
+    if model2:
+        response = model2.invoke(prompt)
+        print("##CREATE QUESTION## ", response.content)
+        answer_extraction_prompt = f"""
+        You are an expert AI Teaching Assistant.
 
-    A multiple-choice question has been generated:
+        A multiple-choice question has been generated:
 
-    {response.content}
+        {response.content}
 
-    Your task is to:
-    1. Identify the correct answer (A, B, C, or D).
-    2. Explain why that answer is correct.
-    3. Optionally, explain why the other options are incorrect.
-    4. Return your response in the following format:
+        Your task is to:
+        1. Identify the correct answer (A, B, C, or D).
+        2. Explain why that answer is correct.
+        3. Optionally, explain why the other options are incorrect.
+        4. Return your response in the following format:
 
-    Correct Answer: <A/B/C/D>  
-    Explanation: <Your explanation here>
-    """.strip()
+        Correct Answer: <A/B/C/D>  
+        Explanation: <Your explanation here>
+        """.strip()
 
-    # Send this prompt to GPT
-    answer_response = model2.invoke(answer_extraction_prompt)
-    print("##ANSWER EXTRACTION##", answer_response.content)
+        # Send this prompt to GPT
+        answer_response = model2.invoke(answer_extraction_prompt)
+        print("##ANSWER EXTRACTION##", answer_response.content)
 
-    return response.content
+        return response.content
+    else:
+        print("Warning: OpenAI not configured, returning mock question")
+        return f"""Question: What is the main concept related to {topic}?
+A. Option A
+B. Option B  
+C. Option C
+D. Option D"""

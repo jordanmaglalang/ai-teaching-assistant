@@ -1,0 +1,34 @@
+Data Structures - Stacks and Queues
+
+What is a Stack?
+A stack is a linear data structure that follows the Last In, First Out (LIFO) principle. This means that the last element added to the stack is the first one to be removed.
+
+Key Operations:
+1. Push: Add an element to the top of the stack
+2. Pop: Remove and return the top element from the stack
+3. Peek/Top: Return the top element without removing it
+4. isEmpty: Check if the stack is empty
+
+Real-world Examples:
+- Browser back button functionality
+- Undo operations in text editors
+- Function call management in programming languages
+
+What is a Queue?
+A queue is a linear data structure that follows the First In, First Out (FIFO) principle. This means that the first element added to the queue is the first one to be removed.
+
+Key Operations:
+1. Enqueue: Add an element to the rear of the queue
+2. Dequeue: Remove and return the front element from the queue
+3. Front: Return the front element without removing it
+4. isEmpty: Check if the queue is empty
+
+Real-world Examples:
+- Print job management
+- Process scheduling in operating systems
+- Breadth-first search algorithms
+
+Stack vs Queue Comparison:
+- Stacks use LIFO, queues use FIFO
+- Stacks add/remove from the same end (top), queues add at rear and remove from front
+- Both are fundamental data structures used in many algorithms

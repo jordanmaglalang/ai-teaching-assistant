@@ -1,6 +1,7 @@
 from docx import Document
 import fitz 
 from pptx import Presentation
+import io
 
 def get_doc_content(content):
     doc = Document(content)
@@ -18,6 +19,7 @@ def get_text_from_pdf(path):
         text_content += page.get_text() + "\n"  # extract text from each page
     print(text_content)
     return text_content
+
 def get_text_from_ppt(path):
     prs = Presentation(path)
     text_content = ""
@@ -27,6 +29,59 @@ def get_text_from_ppt(path):
                 text_content += shape.text + "\n"
     #print(text_content)
     return text_content
+
+def extract_text_from_file(file):
+    """
+    Extract text content from various file types (PDF, DOCX, PPTX, TXT)
+    """
+    filename = file.filename.lower()
+    
+    try:
+        if filename.endswith('.pdf'):
+            # Reset file pointer
+            file.seek(0)
+            pdf_bytes = file.read()
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            text_content = ""
+            for page in doc:
+                text_content += page.get_text() + "\n"
+            return text_content.strip()
+            
+        elif filename.endswith('.docx'):
+            # Reset file pointer
+            file.seek(0)
+            doc = Document(io.BytesIO(file.read()))
+            text_content = ""
+            for paragraph in doc.paragraphs:
+                text_content += paragraph.text + "\n"
+            return text_content.strip()
+            
+        elif filename.endswith('.pptx'):
+            # Reset file pointer
+            file.seek(0)
+            prs = Presentation(io.BytesIO(file.read()))
+            text_content = ""
+            for slide in prs.slides:
+                for shape in slide.shapes:
+                    if hasattr(shape, "text"):
+                        text_content += shape.text + "\n"
+            return text_content.strip()
+            
+        elif filename.endswith('.txt'):
+            # Reset file pointer
+            file.seek(0)
+            content = file.read()
+            # Handle both bytes and string content
+            if isinstance(content, bytes):
+                content = content.decode('utf-8', errors='ignore')
+            return content.strip()
+            
+        else:
+            raise ValueError(f"Unsupported file type: {filename}")
+            
+    except Exception as e:
+        raise Exception(f"Error extracting text from {filename}: {str(e)}")
+
 #doc_path = r"C:\Users\jorda\OneDrive\Documents\testing content ta-ai.docx"
 #pdf_path = r"C:\Users\jorda\Downloads\cmsc313-assembly-nasm-intro.pdf"
 pptx_path = r"/Users/jordanmaglalang/Library/CloudStorage/OneDrive-Personal/Documents/01-Intro.pptx"

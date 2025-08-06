@@ -1,0 +1,45 @@
+Biology - Cell Structure and Function
+
+The Cell: Basic Unit of Life
+All living organisms are composed of one or more cells. Cells are the basic structural and functional units of life.
+
+Types of Cells:
+1. Prokaryotic cells - lack a membrane-bound nucleus (bacteria, archaea)
+2. Eukaryotic cells - have a membrane-bound nucleus (plants, animals, fungi, protists)
+
+Key Cell Organelles and Their Functions:
+
+Nucleus:
+- Controls cell activities
+- Contains DNA (genetic material)
+- Surrounded by nuclear membrane
+
+Mitochondria:
+- Known as the "powerhouse of the cell"
+- Produces ATP (energy) through cellular respiration
+- Has its own DNA
+- More abundant in cells that require lots of energy
+
+Ribosomes:
+- Sites of protein synthesis
+- Can be free in cytoplasm or attached to endoplasmic reticulum
+- Made of RNA and proteins
+
+Endoplasmic Reticulum (ER):
+- Rough ER: has ribosomes attached, synthesizes proteins
+- Smooth ER: lacks ribosomes, synthesizes lipids and metabolizes carbohydrates
+
+Cell Membrane:
+- Controls what enters and exits the cell
+- Made of phospholipid bilayer
+- Selectively permeable
+
+Photosynthesis (in plant cells):
+- Process by which plants convert sunlight, carbon dioxide, and water into glucose and oxygen
+- Occurs in chloroplasts
+- Chemical equation: 6CO2 + 6H2O + light energy → C6H12O6 + 6O2
+
+Cellular Respiration:
+- Process by which cells break down glucose to produce ATP
+- Occurs in mitochondria
+- Chemical equation: C6H12O6 + 6O2 → 6CO2 + 6H2O + ATP

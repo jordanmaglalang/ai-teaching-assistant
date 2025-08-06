@@ -11,12 +11,12 @@ GPT_API_KEY = os.getenv("OPENAI_API_KEY")
 CLAUDE_API_KEY = os.getenv("CLAUDE_API_KEY")
 TOGETHER_API_KEY = os.getenv("TOGETHER_API_KEY")
 
-client = anthropic.Anthropic(api_key=CLAUDE_API_KEY)
-gpt_model = ChatOpenAI()
-client2 = Together(api_key=TOGETHER_API_KEY)
+client = anthropic.Anthropic(api_key=CLAUDE_API_KEY) if CLAUDE_API_KEY else None
+gpt_model = ChatOpenAI() if GPT_API_KEY else None
+client2 = Together(api_key=TOGETHER_API_KEY) if TOGETHER_API_KEY else None
 
 # ✅ Toggle this for real vs. mock mode
-MOCK_MODE = False
+MOCK_MODE = True
 
 def send_message_to_claude(user_message: str):
     if MOCK_MODE:
